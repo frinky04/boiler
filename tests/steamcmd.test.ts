@@ -12,6 +12,7 @@ import {
   isRetriableSteamCmdOutput,
   isRetriableSteamCmdResult,
   retrySteamCmdExecution,
+  classifySteamCmdFailure,
 } from '../src/core/steamcmd.js';
 
 describe('output parsing', () => {
@@ -174,5 +175,31 @@ describe('retrySteamCmdExecution', () => {
 
     expect(result.exitCode).toBe(1);
     expect(calls).toBe(1);
+  });
+});
+
+describe('classifySteamCmdFailure', () => {
+  it('classifies rate-limit failures', () => {
+    const failure = classifySteamCmdFailure('ERROR! Rate Limit Exceeded', 1);
+    expect(failure.category).toBe('rate_limit');
+    expect(failure.retriable).toBe(true);
+  });
+
+  it('classifies transient network failures', () => {
+    const failure = classifySteamCmdFailure('Failed to connect to content server (HTTP 503)', 1);
+    expect(failure.category).toBe('network');
+    expect(failure.retriable).toBe(true);
+  });
+
+  it('classifies disk-related failures', () => {
+    const failure = classifySteamCmdFailure('No space left on device', 1);
+    expect(failure.category).toBe('disk');
+    expect(failure.retriable).toBe(false);
+  });
+
+  it('falls back to unknown with exit code context', () => {
+    const failure = classifySteamCmdFailure('mystery steamcmd output', 42);
+    expect(failure.category).toBe('unknown');
+    expect(failure.summary).toContain('42');
   });
 });

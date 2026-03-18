@@ -1,8 +1,9 @@
 import { resolve, dirname, relative, isAbsolute } from 'path';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
+import { computeDepotStateRecord, detectChangedDepots, persistDepotStateSnapshots, type DepotStateRecord } from '../core/depot-state.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
-import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
+import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import { validateProjectConfig } from '../util/validation.js';
 import * as logger from '../util/logger.js';
@@ -73,6 +74,20 @@ export interface PushSteamCmdDependencies {
 export interface PrePushValidationResult {
   errors: string[];
   warnings: string[];
+}
+
+function pickDepotSnapshots(
+  snapshots: Record<number, DepotStateRecord>,
+  depots: DepotConfig[]
+): Record<number, DepotStateRecord> {
+  const selected: Record<number, DepotStateRecord> = {};
+  for (const depot of depots) {
+    const snapshot = snapshots[depot.depotId];
+    if (snapshot) {
+      selected[depot.depotId] = snapshot;
+    }
+  }
+  return selected;
 }
 
 export function resolvePushDepots(
@@ -248,6 +263,40 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
     process.exit(1);
   }
 
+  let depotSnapshots: Record<number, DepotStateRecord> = {};
+  if (!options.depot && !options.allDepots) {
+    try {
+      const changeDetection = detectChangedDepots(plan.depots, plan.outputDir);
+      depotSnapshots = changeDetection.snapshots;
+
+      if (changeDetection.unchangedDepotIds.length > 0) {
+        logger.debug(`Unchanged depots: ${changeDetection.unchangedDepotIds.join(', ')}`);
+      }
+
+      if (changeDetection.changedDepots.length === 0) {
+        if (plan.setLive) {
+          logger.warn('No depot content changes detected, but SetLive is configured; forcing upload.');
+        } else {
+          logger.success('No depot content changes detected. Skipping upload.');
+          return;
+        }
+      } else if (changeDetection.changedDepots.length < plan.depots.length) {
+        const skipped = plan.depots.length - changeDetection.changedDepots.length;
+        logger.info(`Detected ${changeDetection.changedDepots.length} changed depot(s); skipping ${skipped} unchanged depot(s).`);
+        plan = {
+          ...plan,
+          depots: changeDetection.changedDepots,
+        };
+      }
+    } catch (err) {
+      logger.warn('Unable to detect changed depots; uploading all configured depots.');
+      logger.debug(err instanceof Error ? err.stack ?? err.message : String(err));
+      depotSnapshots = {};
+    }
+  } else if (options.allDepots) {
+    logger.verbose('Skipping changed-depot detection because --all-depots is set.');
+  }
+
   let prepared: PreparedDepots;
   try {
     prepared = prepareDepotsForVdf(plan.depots);
@@ -364,21 +413,27 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   if (isSuccessfulBuild(combined)) {
     lastPush.success = true;
     saveLastPush(lastPush, plan.outputDir);
+    try {
+      const snapshotsToPersist = Object.keys(depotSnapshots).length > 0
+        ? pickDepotSnapshots(depotSnapshots, plan.depots)
+        : Object.fromEntries(
+          plan.depots.map((depot) => [depot.depotId, computeDepotStateRecord(depot)])
+        ) as Record<number, DepotStateRecord>;
+      persistDepotStateSnapshots(plan.outputDir, snapshotsToPersist);
+    } catch (err) {
+      logger.warn('Build uploaded, but failed to update depot state cache.');
+      logger.debug(err instanceof Error ? err.stack ?? err.message : String(err));
+    }
     spin.succeed(`Build uploaded successfully!${buildId ? ` BuildID: ${buildId}` : ''}`);
     logger.dim('  Set it live in the Steamworks dashboard or use --set-live <branch>.');
-  } else if (isRateLimited(combined)) {
-    saveLastPush(lastPush, plan.outputDir);
-    spin.fail('Rate limited by Steam');
-    logger.error('Too many login attempts. Wait 15-30 minutes before trying again.');
-    process.exit(1);
-  } else if (isLoginFailure(combined)) {
-    saveLastPush(lastPush, plan.outputDir);
-    spin.fail('Upload failed — login error');
-    logger.error('Your cached credentials may have expired. Run `boiler login` again.');
-    process.exit(1);
   } else {
+    const failure = classifySteamCmdFailure(combined, result.exitCode);
     saveLastPush(lastPush, plan.outputDir);
-    spin.fail(`Upload failed (exit code ${result.exitCode})`);
+    spin.fail(`Upload failed — ${failure.summary}`);
+    logger.error(failure.guidance);
+    if (failure.retriable) {
+      logger.warn('This error looks transient and may succeed on a later retry.');
+    }
     // Save full log for debugging
     const logPath = resolve(plan.outputDir, 'last-error.log');
     const { writeFileSync } = await import('fs');

@@ -1,7 +1,6 @@
 import { spawn } from 'child_process';
 import { existsSync, mkdirSync, createWriteStream } from 'fs';
 import { join } from 'path';
-import { pipeline } from 'stream/promises';
 import which from 'which';
 import { steamcmdBinary, commonSteamcmdLocations, steamcmdDownloadUrl } from '../util/platform.js';
 import { loadGlobalConfig, updateGlobalConfig, getGlobalDir } from './config.js';
@@ -60,21 +59,11 @@ export async function downloadSteamCmd(): Promise<string> {
       throw new Error(`Download failed: ${response.status} ${response.statusText}`);
     }
 
-    const fileStream = createWriteStream(archivePath);
-    // @ts-ignore - Node 18+ ReadableStream to NodeJS.ReadableStream
-    await pipeline(response.body as any, fileStream);
+    await downloadArchiveWithProgress(response, archivePath, spin);
 
     spin.text = 'Extracting SteamCMD...';
 
-    if (isZip) {
-      // Use PowerShell on Windows to extract
-      await runCommand('powershell', [
-        '-Command',
-        `Expand-Archive -Path '${archivePath}' -DestinationPath '${installDir}' -Force`,
-      ]);
-    } else {
-      await runCommand('tar', ['-xzf', archivePath, '-C', installDir]);
-    }
+    await extractArchiveWithFallback(archivePath, installDir, isZip);
 
     const binary = join(installDir, steamcmdBinary());
     if (!existsSync(binary)) {
@@ -90,6 +79,126 @@ export async function downloadSteamCmd(): Promise<string> {
     spin.fail('Failed to download SteamCMD');
     throw err;
   }
+}
+
+function formatBytes(bytes: number): string {
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let value = bytes;
+  let unitIndex = 0;
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+  return `${value.toFixed(unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+async function downloadArchiveWithProgress(response: Response, archivePath: string, spin: ReturnType<typeof logger.spinner>): Promise<void> {
+  if (!response.body) {
+    throw new Error('SteamCMD download returned no response body.');
+  }
+
+  const totalBytes = Number(response.headers.get('content-length') ?? 0);
+  const fileStream = createWriteStream(archivePath);
+  const reader = response.body.getReader();
+  let downloadedBytes = 0;
+  let lastRenderedAt = 0;
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value) continue;
+
+      downloadedBytes += value.byteLength;
+      if (!fileStream.write(value)) {
+        await new Promise<void>((resolve) => fileStream.once('drain', resolve));
+      }
+
+      const now = Date.now();
+      if (now - lastRenderedAt >= 200) {
+        if (totalBytes > 0) {
+          const percent = ((downloadedBytes / totalBytes) * 100).toFixed(1);
+          spin.text = `Downloading SteamCMD... ${percent}% (${formatBytes(downloadedBytes)} / ${formatBytes(totalBytes)})`;
+        } else {
+          spin.text = `Downloading SteamCMD... ${formatBytes(downloadedBytes)}`;
+        }
+        lastRenderedAt = now;
+      }
+    }
+  } catch (err) {
+    fileStream.destroy(err instanceof Error ? err : undefined);
+    throw err;
+  }
+
+  await new Promise<void>((resolve, reject) => {
+    fileStream.once('error', reject);
+    fileStream.end(() => resolve());
+  });
+}
+
+interface ExtractionAttempt {
+  command: string;
+  args: string[];
+  label: string;
+}
+
+function buildExtractionAttempts(archivePath: string, installDir: string, isZip: boolean): ExtractionAttempt[] {
+  if (isZip) {
+    return [
+      {
+        command: 'powershell',
+        args: ['-Command', `Expand-Archive -Path '${archivePath}' -DestinationPath '${installDir}' -Force`],
+        label: 'PowerShell Expand-Archive',
+      },
+      {
+        command: 'tar',
+        args: ['-xf', archivePath, '-C', installDir],
+        label: 'tar',
+      },
+      {
+        command: 'unzip',
+        args: ['-o', archivePath, '-d', installDir],
+        label: 'unzip',
+      },
+    ];
+  }
+
+  return [
+    {
+      command: 'tar',
+      args: ['-xzf', archivePath, '-C', installDir],
+      label: 'tar',
+    },
+    {
+      command: 'python',
+      args: ['-c', `import tarfile; tarfile.open(r"${archivePath}", "r:gz").extractall(r"${installDir}")`],
+      label: 'python tarfile',
+    },
+    {
+      command: 'python3',
+      args: ['-c', `import tarfile; tarfile.open(r"${archivePath}", "r:gz").extractall(r"${installDir}")`],
+      label: 'python3 tarfile',
+    },
+  ];
+}
+
+async function extractArchiveWithFallback(archivePath: string, installDir: string, isZip: boolean): Promise<void> {
+  const attempts = buildExtractionAttempts(archivePath, installDir, isZip);
+  const failures: string[] = [];
+
+  for (const attempt of attempts) {
+    try {
+      logger.verbose(`Extracting with ${attempt.label}...`);
+      await runCommand(attempt.command, attempt.args);
+      return;
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.debug(`Extraction failed via ${attempt.label}: ${message}`);
+      failures.push(`${attempt.label}: ${message}`);
+    }
+  }
+
+  throw new Error(`Failed to extract SteamCMD archive. Attempts: ${failures.join(' | ')}`);
 }
 
 function runCommand(cmd: string, args: string[]): Promise<void> {
@@ -150,6 +259,25 @@ export interface CachedLoginProbeResult {
   output: string;
 }
 
+export type SteamCmdFailureCategory =
+  | 'auth'
+  | 'rate_limit'
+  | 'network'
+  | 'content'
+  | 'disk'
+  | 'depot_lock'
+  | 'manifest'
+  | 'timeout'
+  | 'unknown';
+
+export interface SteamCmdFailureInfo {
+  category: SteamCmdFailureCategory;
+  summary: string;
+  guidance: string;
+  retriable: boolean;
+  matchedPattern?: string;
+}
+
 const LOGGED_IN_RE = /Logged in OK|Waiting for user info\.\.\.OK|Login Success/i;
 const PASSWORD_PROMPT_RE = /password:/i;
 const STEAM_GUARD_PROMPT_RE = /Steam Guard|Two-factor|two factor|confirm the login in the Steam Mobile app|Waiting for confirmation|Steam Guard mobile authenticator/i;
@@ -159,6 +287,49 @@ const RETRIABLE_STEAMCMD_ERRORS: Array<{ reason: string; pattern: RegExp }> = [
   { reason: 'steam service unavailable', pattern: /content server.*unavailable|service unavailable|server is busy|try again later/i },
   { reason: 'steam http error', pattern: /http.*\b(429|500|502|503|504)\b/i },
   { reason: 'depot lock conflict', pattern: /depot.*locked|another build is in progress/i },
+];
+const STEAMCMD_FAILURE_PATTERNS: Array<{
+  category: Exclude<SteamCmdFailureCategory, 'auth' | 'rate_limit' | 'timeout' | 'unknown'>;
+  pattern: RegExp;
+  summary: string;
+  guidance: string;
+  retriable: boolean;
+}> = [
+  {
+    category: 'network',
+    pattern: /failed to connect|unable to connect|network error|connection (?:timed out|reset|closed)|service unavailable|server is busy|http.*\b(429|500|502|503|504)\b/i,
+    summary: 'network/service error',
+    guidance: 'Steam network services look unavailable. Retry in a few minutes.',
+    retriable: true,
+  },
+  {
+    category: 'disk',
+    pattern: /no space left on device|disk full|not enough disk space|insufficient disk space|failed writing/i,
+    summary: 'disk space error',
+    guidance: 'Free disk space on the machine running SteamCMD and retry.',
+    retriable: false,
+  },
+  {
+    category: 'depot_lock',
+    pattern: /depot.*locked|another build is in progress|conflict.*depot/i,
+    summary: 'depot lock conflict',
+    guidance: 'Another upload appears to be using this depot. Wait for it to finish and retry.',
+    retriable: true,
+  },
+  {
+    category: 'manifest',
+    pattern: /manifest.*invalid|failed to get manifest|failed to load script|invalid app build|invalid depot build/i,
+    summary: 'manifest/build script error',
+    guidance: 'Generated VDF or build metadata appears invalid. Validate config and VDF output, then retry.',
+    retriable: false,
+  },
+  {
+    category: 'content',
+    pattern: /content root|file not found|unable to read|failed to open|invalid path|path does not exist/i,
+    summary: 'content path error',
+    guidance: 'One or more content paths are invalid or unreadable. Fix project paths and retry.',
+    retriable: false,
+  },
 ];
 
 export interface StreamProcessState {
@@ -207,6 +378,35 @@ export function flushSteamCmdOutputBuffer(
   };
 }
 
+function redactSteamCmdArgs(args: string[]): string[] {
+  const redacted = [...args];
+
+  for (let i = 0; i < redacted.length; i++) {
+    const token = redacted[i];
+    if (token === '+set_steam_guard_code' && i + 1 < redacted.length) {
+      redacted[i + 1] = '***';
+    }
+
+    if (token === '+login') {
+      const passwordIndex = i + 2;
+      if (
+        passwordIndex < redacted.length &&
+        !redacted[passwordIndex].startsWith('+') &&
+        passwordIndex + 1 <= redacted.length
+      ) {
+        redacted[passwordIndex] = '***';
+      }
+    }
+  }
+
+  return redacted;
+}
+
+function formatSteamCmdCommandForLog(steamcmdPath: string, args: string[]): string {
+  const renderedArgs = redactSteamCmdArgs(args).map((arg) => (/\s/.test(arg) ? `"${arg}"` : arg)).join(' ');
+  return `${steamcmdPath} ${renderedArgs}`.trim();
+}
+
 export function runSteamCmd(
   steamcmdPath: string,
   args: string[],
@@ -218,6 +418,8 @@ export function runSteamCmd(
     : options ?? {};
 
   const timeoutMs = opts.timeoutMs ?? 120_000; // 2 min default
+  const startedAt = Date.now();
+  logger.debug(`SteamCMD exec: ${formatSteamCmdCommandForLog(steamcmdPath, args)}`);
 
   return new Promise((resolve, reject) => {
     const proc = spawn(steamcmdPath, args, {
@@ -267,18 +469,21 @@ export function runSteamCmd(
       stdoutState = flushSteamCmdOutputBuffer(stdoutState, opts);
       stderrState = flushSteamCmdOutputBuffer(stderrState, opts);
       if (timedOut) {
+        logger.debug(`SteamCMD exec finished with timeout after ${Date.now() - startedAt}ms`);
         resolve({
           exitCode: 1,
           stdout,
           stderr: stderr + '\n[boiler] SteamCMD timed out after ' + (timeoutMs / 1000) + 's',
         });
       } else {
+        logger.debug(`SteamCMD exec finished with exit code ${code ?? 1} after ${Date.now() - startedAt}ms`);
         resolve({ exitCode: code ?? 1, stdout, stderr });
       }
     });
 
     proc.on('error', (err) => {
       clearTimeout(timer);
+      logger.debug(`SteamCMD process error after ${Date.now() - startedAt}ms: ${err.message}`);
       reject(err);
     });
   });
@@ -363,6 +568,57 @@ export async function runSteamCmdWithRetry(
     () => runSteamCmd(steamcmdPath, args, runOptions),
     retryOptions
   );
+}
+
+export function classifySteamCmdFailure(output: string, exitCode: number = 1): SteamCmdFailureInfo {
+  if (isRateLimited(output)) {
+    return {
+      category: 'rate_limit',
+      summary: 'rate limited by Steam',
+      guidance: 'Too many login attempts were detected. Wait 15-30 minutes and retry.',
+      retriable: true,
+      matchedPattern: 'Rate Limit Exceeded',
+    };
+  }
+
+  if (isLoginFailure(output) || needsSteamGuard(output) || PASSWORD_PROMPT_RE.test(output)) {
+    return {
+      category: 'auth',
+      summary: 'authentication failed',
+      guidance: 'Cached credentials may be expired. Run `boiler login` and retry.',
+      retriable: false,
+      matchedPattern: 'login/Steam Guard prompt',
+    };
+  }
+
+  if (/timed out|timeout/i.test(output)) {
+    return {
+      category: 'timeout',
+      summary: 'SteamCMD timed out',
+      guidance: 'Steam may be slow or unavailable. Retry shortly.',
+      retriable: true,
+      matchedPattern: 'timed out',
+    };
+  }
+
+  for (const failure of STEAMCMD_FAILURE_PATTERNS) {
+    if (failure.pattern.test(output)) {
+      return {
+        category: failure.category,
+        summary: failure.summary,
+        guidance: failure.guidance,
+        retriable: failure.retriable,
+        matchedPattern: failure.pattern.source,
+      };
+    }
+  }
+
+  return {
+    category: 'unknown',
+    summary: `upload failed (exit code ${exitCode})`,
+    guidance: 'SteamCMD returned an unclassified error. Check last-error.log for raw output details.',
+    retriable: false,
+  };
 }
 
 export function parseBuildId(output: string): string | null {

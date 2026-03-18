@@ -39,6 +39,7 @@ export interface PushOptions {
   desc?: string;
   setLive?: string;
   dryRun?: boolean;
+  allDepots?: boolean;
   skipDownload?: boolean;
 }
 

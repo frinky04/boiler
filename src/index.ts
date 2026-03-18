@@ -11,10 +11,27 @@ import * as logger from './util/logger.js';
 
 const program = new Command();
 
+if (process.argv.includes('--debug')) {
+  logger.setLogLevel('debug');
+} else if (process.argv.includes('--verbose') || process.argv.includes('-v')) {
+  logger.setLogLevel('verbose');
+}
+
 program
   .name('boiler')
   .description('Butler-like CLI for uploading builds to Steam via SteamCMD')
-  .version('0.1.0');
+  .version('0.1.0')
+  .option('-v, --verbose', 'Enable verbose logging')
+  .option('--debug', 'Enable debug logging (implies verbose)');
+
+program.hook('preAction', (_command, actionCommand) => {
+  const opts = actionCommand.optsWithGlobals() as { verbose?: boolean; debug?: boolean };
+  if (opts.debug) {
+    logger.setLogLevel('debug');
+  } else if (opts.verbose) {
+    logger.setLogLevel('verbose');
+  }
+});
 
 program
   .command('login')
@@ -38,6 +55,7 @@ program
   .option('--desc <text>', 'Build description')
   .option('--set-live <branch>', 'Set build live on branch after upload')
   .option('--dry-run', 'Preview generated VDF without uploading')
+  .option('--all-depots', 'Upload all depots and skip automatic changed-depot detection')
   .option('--skip-download', 'Fail if SteamCMD is missing instead of downloading it')
   .action(pushCommand);
 
@@ -55,7 +73,8 @@ program
   .action(doctorCommand);
 
 // No subcommand → interactive wizard
-if (process.argv.length <= 2) {
+const nonGlobalArgs = process.argv.slice(2).filter((arg) => arg !== '-v' && arg !== '--verbose' && arg !== '--debug');
+if (nonGlobalArgs.length === 0) {
   interactiveWizard().catch((err) => {
     logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

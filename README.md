@@ -21,10 +21,14 @@ Uploading with raw `steamcmd` usually means:
 - `login` flow that handles email codes, app codes, and Steam Mobile approval prompts
 - `push` command that generates VDFs and runs the upload for you
 - Multi-depot support with multiple Steam `FileMapping` entries per depot
+- Automatic changed-depot detection to skip unchanged depot uploads
+- Retry with exponential backoff for transient SteamCMD failures
 - `status` command for config, auth, artifacts, and last upload details
 - `doctor` command for preflight validation and CI checks
 - JSON output for `status` and `doctor`
 - Automatic SteamCMD discovery, with optional auto-download
+- Global `--verbose` / `--debug` logging modes for troubleshooting
+- SteamCMD download progress and extraction fallbacks for minimal CI images
 
 ## Install
 
@@ -127,6 +131,9 @@ boiler push ./build --set-live beta
 # Preview generated VDF without uploading
 boiler push ./build --dry-run
 
+# Force upload of every depot (disable changed-depot detection)
+boiler push --all-depots
+
 # Fail instead of auto-downloading SteamCMD
 boiler push --skip-download
 ```
@@ -134,6 +141,8 @@ boiler push --skip-download
 Important behavior:
 
 - If `--desc` is omitted, `boiler` generates a timestamp-based description.
+- `push` retries transient SteamCMD failures up to 3 attempts with exponential backoff.
+- For project-config uploads, `push` auto-detects changed depots and uploads only those depots unless `--all-depots` is set.
 - For projects with multiple configured depots, folder override is intentionally blocked to avoid accidentally uploading the same build to every depot.
 
 Push options:
@@ -145,7 +154,15 @@ Push options:
 | `--desc <text>` | Build description visible in Steamworks |
 | `--set-live <branch>` | Set build live on a branch after upload |
 | `--dry-run` | Print generated VDF files without uploading |
+| `--all-depots` | Upload all configured depots and skip changed-depot detection |
 | `--skip-download` | Fail if SteamCMD is missing instead of downloading it |
+
+Global options:
+
+| Flag | Description |
+| --- | --- |
+| `-v, --verbose` | Enable extra logging |
+| `--debug` | Enable debug logging (implies verbose) |
 
 ### `boiler status`
 
