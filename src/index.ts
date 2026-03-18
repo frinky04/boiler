@@ -12,7 +12,7 @@ import * as logger from './util/logger.js';
 const program = new Command();
 
 program
-  .name('easy-steam')
+  .name('boiler')
   .description('Butler-like CLI for uploading builds to Steam via SteamCMD')
   .version('0.1.0');
 
@@ -27,7 +27,7 @@ program
 
 program
   .command('init')
-  .description('Set up project config (.easy-steam.json)')
+  .description('Set up project config (.boiler.json)')
   .action(initCommand);
 
 program

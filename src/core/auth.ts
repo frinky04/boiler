@@ -41,7 +41,7 @@ export async function login(steamcmdPath: string, options: LoginOptions = {}): P
 
   if (!username) {
     if (options.nonInteractive) {
-      return failLogin('', 'Steam username is required in non-interactive mode. Pass `--username` or set `EASY_STEAM_USERNAME`.');
+      return failLogin('', 'Steam username is required in non-interactive mode. Pass `--username` or set `BOILER_USERNAME`.');
     }
 
     const answers = await inquirer.prompt([
@@ -59,7 +59,7 @@ export async function login(steamcmdPath: string, options: LoginOptions = {}): P
   let password = options.password;
   if (!password) {
     if (options.nonInteractive) {
-      return failLogin(username, 'Steam password is required in non-interactive mode. Use `--password-env` or set `EASY_STEAM_PASSWORD`.');
+      return failLogin(username, 'Steam password is required in non-interactive mode. Use `--password-env` or set `BOILER_PASSWORD`.');
     }
 
     const answers = await inquirer.prompt([
@@ -193,7 +193,7 @@ export async function login(steamcmdPath: string, options: LoginOptions = {}): P
         spin.fail('Steam Guard code required');
         return failLogin(
           username,
-          'Steam Guard code is required in non-interactive mode. Use `--guard-code-env` or set `EASY_STEAM_GUARD_CODE`.'
+          'Steam Guard code is required in non-interactive mode. Use `--guard-code-env` or set `BOILER_GUARD_CODE`.'
         );
       }
 

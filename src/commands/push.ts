@@ -88,7 +88,7 @@ export function resolvePushDepots(
   }
 
   if (!projectConfig?.depots?.length) {
-    throw new Error('No depot config. Run `easy-steam init` or pass --depot <id> with a folder.');
+    throw new Error('No depot config. Run `boiler init` or pass --depot <id> with a folder.');
   }
 
   if (!folder) {
@@ -97,7 +97,7 @@ export function resolvePushDepots(
 
   if (projectConfig.depots.length > 1) {
     throw new Error(
-      'Folder override is only supported for single-depot projects. Update `.easy-steam.json` or run a one-off upload with `easy-steam push <folder> --app <id> --depot <id>`.'
+      'Folder override is only supported for single-depot projects. Update `.boiler.json` or run a one-off upload with `boiler push <folder> --app <id> --depot <id>`.'
     );
   }
 
@@ -149,7 +149,7 @@ export function buildPushPlan(
 ): PushPlan {
   const appId = options.app ?? projectConfig?.appId;
   if (!appId) {
-    throw new Error('No App ID. Run `easy-steam init` or pass --app <id>.');
+    throw new Error('No App ID. Run `boiler init` or pass --app <id>.');
   }
 
   return {
@@ -248,7 +248,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   // 4. Check auth
   const username = getUsername();
   if (!username) {
-    logger.error('Not logged in. Run `easy-steam login` first.');
+    logger.error('Not logged in. Run `boiler login` first.');
     process.exit(1);
   }
 
@@ -328,7 +328,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   } else if (isLoginFailure(combined)) {
     saveLastPush(lastPush, plan.outputDir);
     spin.fail('Upload failed — login error');
-    logger.error('Your cached credentials may have expired. Run `easy-steam login` again.');
+    logger.error('Your cached credentials may have expired. Run `boiler login` again.');
     process.exit(1);
   } else {
     saveLastPush(lastPush, plan.outputDir);

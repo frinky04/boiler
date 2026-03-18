@@ -30,7 +30,7 @@ function createProjectConfig(contentRoot: string): ProjectConfig {
         fileExclusions: [],
       },
     ],
-    buildOutput: '.easy-steam-output',
+    buildOutput: '.boiler-output',
     setLive: null,
   };
 }
@@ -41,7 +41,7 @@ describe('validateProjectFilesystemForDoctor', () => {
 
     expect(issues).toContainEqual({
       level: 'error',
-      message: 'No `.easy-steam.json` found in the current directory.',
+      message: 'No `.boiler.json` found in the current directory.',
     });
   });
 
@@ -70,7 +70,7 @@ describe('validateProjectFilesystemForDoctor', () => {
           fileExclusions: [],
         },
       ],
-      buildOutput: '.easy-steam-output',
+      buildOutput: '.boiler-output',
       setLive: null,
     };
 

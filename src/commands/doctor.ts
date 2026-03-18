@@ -38,7 +38,7 @@ export interface DoctorDependencies {
 
 export function validateProjectFilesystemForDoctor(project: ProjectConfig | null, cwd: string = process.cwd()): DoctorIssue[] {
   if (!project) {
-    return [{ level: 'error', message: 'No `.easy-steam.json` found in the current directory.' }];
+    return [{ level: 'error', message: 'No `.boiler.json` found in the current directory.' }];
   }
 
   const issues: DoctorIssue[] = [];
@@ -113,7 +113,7 @@ export async function runDoctorChecks(
     addCheck(checks, {
       name: 'steamcmd',
       level: 'error',
-      message: 'SteamCMD was not found. Install it or run `easy-steam login` once to let easy-steam download it.',
+      message: 'SteamCMD was not found. Install it or run `boiler login` once to let boiler download it.',
       details: { path: null },
     });
   }
@@ -130,7 +130,7 @@ export async function runDoctorChecks(
     addCheck(checks, {
       name: 'account',
       level: 'error',
-      message: 'No saved Steam username. Run `easy-steam login` first.',
+      message: 'No saved Steam username. Run `boiler login` first.',
       details: { username: null },
     });
   }
@@ -147,7 +147,7 @@ export async function runDoctorChecks(
       addCheck(checks, {
         name: 'auth',
         level: 'warning',
-        message: `${loginProbe.message} Run \`easy-steam login\` if uploads still fail.`,
+        message: `${loginProbe.message} Run \`boiler login\` if uploads still fail.`,
       });
     } else {
       addCheck(checks, {

@@ -24,14 +24,14 @@ describe('resolveLoginOptions', () => {
     });
   });
 
-  it('falls back to EASY_STEAM_* environment variables', () => {
+  it('prefers BOILER_* environment variables', () => {
     const options = resolveLoginOptions(
       {},
       {
-        EASY_STEAM_USERNAME: 'env-user',
-        EASY_STEAM_PASSWORD: 'env-password',
-        EASY_STEAM_GUARD_CODE: '654321',
-        EASY_STEAM_NON_INTERACTIVE: 'true',
+        BOILER_USERNAME: 'env-user',
+        BOILER_PASSWORD: 'env-password',
+        BOILER_GUARD_CODE: '654321',
+        BOILER_NON_INTERACTIVE: 'true',
       }
     );
 

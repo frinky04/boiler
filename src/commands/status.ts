@@ -76,7 +76,7 @@ export async function getStatusReport(
   let authStatus: StatusReport['account']['authStatus'] = 'not_checked';
   let authMessage = 'Steam login could not be checked.';
   if (!global.username) {
-    authMessage = 'No saved Steam username. Run `easy-steam login` first.';
+    authMessage = 'No saved Steam username. Run `boiler login` first.';
   } else if (!steamcmdPath) {
     authMessage = 'SteamCMD not found, so cached login could not be checked.';
   } else {
@@ -140,7 +140,7 @@ function printStatusReport(report: StatusReport): void {
     }
     console.log('');
   } else {
-    logger.dim('  No project config found. Run `easy-steam init`.\n');
+    logger.dim('  No project config found. Run `boiler init`.\n');
   }
 
   console.log('  Account:');

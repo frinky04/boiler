@@ -22,7 +22,7 @@ export function dim(msg: string): void {
 }
 
 export function banner(): void {
-  console.log(chalk.bold.cyan('\n  easy-steam') + chalk.dim(' — Butler-like uploads to Steam\n'));
+  console.log(chalk.bold.cyan('\n  boiler') + chalk.dim(' — Butler-like uploads to Steam\n'));
 }
 
 export function spinner(text: string): Ora {

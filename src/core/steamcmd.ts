@@ -246,7 +246,7 @@ export function runSteamCmd(
         resolve({
           exitCode: 1,
           stdout,
-          stderr: stderr + '\n[easy-steam] SteamCMD timed out after ' + (timeoutMs / 1000) + 's',
+          stderr: stderr + '\n[boiler] SteamCMD timed out after ' + (timeoutMs / 1000) + 's',
         });
       } else {
         resolve({ exitCode: code ?? 1, stdout, stderr });
@@ -322,7 +322,7 @@ export function classifyCachedLoginProbe(result: SteamCmdResult): CachedLoginPro
   if (needsSteamGuard(output) || isLoginFailure(output) || PASSWORD_PROMPT_RE.test(output)) {
     return {
       status: 'missing',
-      message: 'Cached Steam login is missing or expired. Run `easy-steam login` again.',
+      message: 'Cached Steam login is missing or expired. Run `boiler login` again.',
       output,
     };
   }

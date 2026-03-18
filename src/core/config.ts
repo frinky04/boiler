@@ -4,10 +4,10 @@ import { homedir } from 'os';
 import type { ProjectConfig, GlobalConfig, LastPush } from '../types/index.js';
 import { assertValidProjectConfig } from '../util/validation.js';
 
-const PROJECT_CONFIG_FILE = '.easy-steam.json';
-const GLOBAL_DIR = join(homedir(), '.easy-steam');
+const PROJECT_CONFIG_FILE = '.boiler.json';
+const GLOBAL_DIR = join(homedir(), '.boiler');
 const GLOBAL_CONFIG_FILE = join(GLOBAL_DIR, 'config.json');
-const OUTPUT_DIR = '.easy-steam-output';
+const OUTPUT_DIR = '.boiler-output';
 
 export function getProjectConfigPath(cwd: string = process.cwd()): string {
   return join(cwd, PROJECT_CONFIG_FILE);

@@ -7,7 +7,7 @@
 
 ## Project Snapshot
 
-easy-steam is a CLI tool for uploading game builds to Steam via SteamCMD. It replaces manual VDF editing and Steamworks GUI navigation with simple commands: `login`, `init`, `push`, and `status`.
+boiler is a CLI tool for uploading game builds to Steam via SteamCMD. It replaces manual VDF editing and Steamworks GUI navigation with simple commands: `login`, `init`, `push`, and `status`.
 
 This is an early-stage project. Improvements to structure and maintainability are welcome.
 
@@ -31,15 +31,15 @@ This is an early-stage project. Improvements to structure and maintainability ar
 
 - **Commander** — CLI framework and argument parsing.
 - **Inquirer** — Interactive prompts (login, init wizard, interactive menu).
-- **Conf** — Global config storage (`~/.easy-steam/config.json`).
+- **Conf** — Global config storage (`~/.boiler/config.json`).
 - **chalk/ora** — Terminal output formatting and spinners.
 - **which** — Finding SteamCMD on PATH.
 
 ## Security
 
 - Never store or log Steam passwords. Passwords are passed to SteamCMD once and discarded.
-- Only the Steam username is persisted (via Conf in `~/.easy-steam/config.json`).
-- `.easy-steam.json` (project config) contains no secrets and is safe to commit.
+- Only the Steam username is persisted (via Conf in `~/.boiler/config.json`).
+- `.boiler.json` (project config) contains no secrets and is safe to commit.
 - Be careful with `child_process` calls to SteamCMD — always validate/sanitize inputs to avoid command injection.
 
 ## Testing

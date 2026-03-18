@@ -27,7 +27,7 @@ describe('project config', () => {
           fileExclusions: ['*.pdb'],
         },
       ],
-      buildOutput: '.easy-steam-output',
+      buildOutput: '.boiler-output',
       setLive: null,
     };
   }
@@ -55,20 +55,20 @@ describe('project config', () => {
     };
 
     saveProjectConfig(config, TEST_DIR);
-    const raw = readFileSync(join(TEST_DIR, '.easy-steam.json'), 'utf-8');
+    const raw = readFileSync(join(TEST_DIR, '.boiler.json'), 'utf-8');
     const parsed = JSON.parse(raw);
     expect(parsed.appId).toBe(12345);
     expect(parsed.setLive).toBe('beta');
   });
 
   it('throws a readable error for malformed project config JSON', () => {
-    const configPath = join(TEST_DIR, '.easy-steam.json');
+    const configPath = join(TEST_DIR, '.boiler.json');
     writeFileSync(configPath, '{ invalid json', 'utf-8');
     expect(() => loadProjectConfig(TEST_DIR)).toThrow(/Invalid JSON/);
   });
 
   it('throws a readable error for invalid project config semantics', () => {
-    const configPath = join(TEST_DIR, '.easy-steam.json');
+    const configPath = join(TEST_DIR, '.boiler.json');
     writeFileSync(configPath, JSON.stringify({
       appId: 480,
       depots: [
@@ -122,7 +122,7 @@ describe('project config', () => {
   });
 
   it('loads legacy configs that use a single fileMapping object', () => {
-    const configPath = join(TEST_DIR, '.easy-steam.json');
+    const configPath = join(TEST_DIR, '.boiler.json');
     writeFileSync(configPath, JSON.stringify({
       appId: 480,
       depots: [
@@ -133,7 +133,7 @@ describe('project config', () => {
           fileExclusions: [],
         },
       ],
-      buildOutput: '.easy-steam-output',
+      buildOutput: '.boiler-output',
       setLive: null,
     }), 'utf-8');
 

@@ -122,7 +122,7 @@ export async function initCommand(): Promise<void> {
       {
         type: 'confirm',
         name: 'overwrite',
-        message: '.easy-steam.json already exists. Overwrite?',
+        message: '.boiler.json already exists. Overwrite?',
         default: false,
       },
     ]);
@@ -164,11 +164,11 @@ export async function initCommand(): Promise<void> {
   const config: ProjectConfig = {
     appId: parseInt(appId, 10),
     depots,
-    buildOutput: '.easy-steam-output',
+    buildOutput: '.boiler-output',
     setLive: null,
   };
 
   saveProjectConfig(config);
-  logger.success('Created .easy-steam.json');
-  logger.dim('  Run `easy-steam push` to upload your first build.');
+  logger.success('Created .boiler.json');
+  logger.dim('  Run `boiler push` to upload your first build.');
 }

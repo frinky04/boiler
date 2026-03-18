@@ -1,6 +1,6 @@
 # Roadmap
 
-easy-steam already covers the basic SteamCMD upload path, but it still needs a stronger safety model around uploads, clearer preflight checks, and better multi-depot ergonomics before it is dependable for real production use.
+boiler already covers the basic SteamCMD upload path, but it still needs a stronger safety model around uploads, clearer preflight checks, and better multi-depot ergonomics before it is dependable for real production use.
 
 ## Near Term
 
@@ -10,7 +10,7 @@ easy-steam already covers the basic SteamCMD upload path, but it still needs a s
    - Add a `doctor` command that verifies config, SteamCMD availability, cached auth viability, and depot content roots before upload.
 
 2. Stronger validation
-   - Validate `.easy-steam.json` structure and semantics, not just JSON syntax.
+   - Validate `.boiler.json` structure and semantics, not just JSON syntax.
    - Catch invalid depot mappings, duplicate depot IDs, invalid branch names, and unsupported absolute local paths before VDF generation.
    - Improve error messages so failures explain exactly what must be fixed.
 

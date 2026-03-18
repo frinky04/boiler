@@ -19,7 +19,7 @@ function createProjectConfig(depots: DepotConfig[]): ProjectConfig {
   return {
     appId: 480,
     depots,
-    buildOutput: '.easy-steam-output',
+    buildOutput: '.boiler-output',
     setLive: null,
   };
 }

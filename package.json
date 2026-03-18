@@ -1,10 +1,10 @@
 {
-  "name": "easy-steam",
+  "name": "boiler",
   "version": "0.1.0",
   "description": "Butler-like CLI for uploading builds to Steam via SteamCMD",
   "type": "module",
   "bin": {
-    "easy-steam": "./bin/easy-steam.js"
+    "boiler": "./bin/boiler.js"
   },
   "scripts": {
     "build": "tsc",

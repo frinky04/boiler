@@ -1,6 +1,6 @@
-# easy-steam
+# boiler
 
-`easy-steam` is a small CLI that makes Steam uploads feel less like paperwork.
+`boiler` is a small CLI that makes Steam uploads feel less like paperwork.
 
 It wraps `steamcmd`, generates the VDF files for you, handles Steam Guard login flows, and gives you a cleaner workflow for pushing builds without bouncing around the Steamworks UI.
 
@@ -13,11 +13,11 @@ Uploading with raw `steamcmd` usually means:
 - dealing with Steam Guard friction
 - re-checking paths, depot mappings, and output folders every time
 
-`easy-steam` smooths that out with a project config, interactive setup, safer defaults, and better preflight tooling.
+`boiler` smooths that out with a project config, interactive setup, safer defaults, and better preflight tooling.
 
 ## Features
 
-- Interactive `init` wizard for `.easy-steam.json`
+- Interactive `init` wizard for `.boiler.json`
 - `login` flow that handles email codes, app codes, and Steam Mobile approval prompts
 - `push` command that generates VDFs and runs the upload for you
 - Multi-depot support with multiple Steam `FileMapping` entries per depot
@@ -29,50 +29,50 @@ Uploading with raw `steamcmd` usually means:
 ## Install
 
 ```bash
-npm install -g easy-steam
+npm install -g boiler
 ```
 
 Or run it directly:
 
 ```bash
-npx easy-steam
+npx boiler
 ```
 
 ## Quick Start
 
 ```bash
 # 1. Log in to Steam
-easy-steam login
+boiler login
 
-# 2. Create .easy-steam.json
-easy-steam init
+# 2. Create .boiler.json
+boiler init
 
 # 3. Upload your build
-easy-steam push
+boiler push
 ```
 
 If your project only has one depot, you can also override the content folder directly:
 
 ```bash
-easy-steam push ./build
+boiler push ./build
 ```
 
 ## Commands
 
-### `easy-steam login`
+### `boiler login`
 
-Authenticate with Steam and let SteamCMD cache the session. `easy-steam` never stores your password. It only stores your Steam username in global config.
+Authenticate with Steam and let SteamCMD cache the session. `boiler` never stores your password. It only stores your Steam username in global config.
 
 ```bash
-easy-steam login
+boiler login
 ```
 
 For CI or automation:
 
 ```bash
-EASY_STEAM_USERNAME=buildbot \
-EASY_STEAM_PASSWORD=super-secret \
-easy-steam login --non-interactive
+BOILER_USERNAME=buildbot \
+BOILER_PASSWORD=super-secret \
+boiler login --non-interactive
 ```
 
 Supported login automation inputs:
@@ -81,16 +81,16 @@ Supported login automation inputs:
 - `--password-env <var>`
 - `--guard-code-env <var>`
 - `--non-interactive`
-- `EASY_STEAM_USERNAME`
-- `EASY_STEAM_PASSWORD`
-- `EASY_STEAM_GUARD_CODE`
-- `EASY_STEAM_NON_INTERACTIVE=1`
+- `BOILER_USERNAME`
+- `BOILER_PASSWORD`
+- `BOILER_GUARD_CODE`
+- `BOILER_NON_INTERACTIVE=1`
 
-If Steam requires approval in the Steam Mobile app, `easy-steam` will nudge you after a few seconds even if SteamCMD is being quiet about it.
+If Steam requires approval in the Steam Mobile app, `boiler` will nudge you after a few seconds even if SteamCMD is being quiet about it.
 
-### `easy-steam init`
+### `boiler init`
 
-Create `.easy-steam.json` with an interactive wizard.
+Create `.boiler.json` with an interactive wizard.
 
 It prompts for:
 
@@ -101,39 +101,39 @@ It prompts for:
 - one or more file mappings per depot
 
 ```bash
-easy-steam init
+boiler init
 ```
 
-### `easy-steam push [folder]`
+### `boiler push [folder]`
 
 Generate VDF files and upload a build through SteamCMD.
 
 ```bash
-# Use config from .easy-steam.json
-easy-steam push
+# Use config from .boiler.json
+boiler push
 
 # Override the content folder for a single-depot project
-easy-steam push ./dist
+boiler push ./dist
 
 # One-off upload without a config file
-easy-steam push ./build --app 480 --depot 481
+boiler push ./build --app 480 --depot 481
 
 # Add a build description
-easy-steam push ./build --desc "v1.2.0 release"
+boiler push ./build --desc "v1.2.0 release"
 
 # Set a branch live after upload
-easy-steam push ./build --set-live beta
+boiler push ./build --set-live beta
 
 # Preview generated VDF without uploading
-easy-steam push ./build --dry-run
+boiler push ./build --dry-run
 
 # Fail instead of auto-downloading SteamCMD
-easy-steam push --skip-download
+boiler push --skip-download
 ```
 
 Important behavior:
 
-- If `--desc` is omitted, `easy-steam` generates a timestamp-based description.
+- If `--desc` is omitted, `boiler` generates a timestamp-based description.
 - For projects with multiple configured depots, folder override is intentionally blocked to avoid accidentally uploading the same build to every depot.
 
 Push options:
@@ -147,7 +147,7 @@ Push options:
 | `--dry-run` | Print generated VDF files without uploading |
 | `--skip-download` | Fail if SteamCMD is missing instead of downloading it |
 
-### `easy-steam status`
+### `boiler status`
 
 Show the current project state, including:
 
@@ -159,13 +159,13 @@ Show the current project state, including:
 - last upload details
 
 ```bash
-easy-steam status
+boiler status
 
 # Machine-readable output
-easy-steam status --json
+boiler status --json
 ```
 
-### `easy-steam doctor`
+### `boiler doctor`
 
 Run preflight checks before uploading.
 
@@ -178,22 +178,22 @@ It checks:
 - cached Steam login
 
 ```bash
-easy-steam doctor
+boiler doctor
 
 # JSON output for CI
-easy-steam doctor --json
+boiler doctor --json
 
 # Exit non-zero on warnings too
-easy-steam doctor --json --strict
+boiler doctor --json --strict
 ```
 
-### `easy-steam`
+### `boiler`
 
-Running `easy-steam` with no arguments opens an interactive menu for `login`, `init`, `push`, `status`, and `doctor`.
+Running `boiler` with no arguments opens an interactive menu for `login`, `init`, `push`, `status`, and `doctor`.
 
 ## Config
 
-Running `easy-steam init` creates a `.easy-steam.json` file in your project root:
+Running `boiler init` creates a `.boiler.json` file in your project root:
 
 ```json
 {
@@ -212,7 +212,7 @@ Running `easy-steam init` creates a `.easy-steam.json` file in your project root
       "fileExclusions": ["*.pdb", "*.map", ".DS_Store", "Thumbs.db"]
     }
   ],
-  "buildOutput": ".easy-steam-output",
+  "buildOutput": ".boiler-output",
   "setLive": null
 }
 ```
@@ -244,45 +244,45 @@ If a depot needs more than one Steam `FileMapping`, use multiple entries:
 Typical CI flow:
 
 ```bash
-easy-steam doctor --json --strict
-easy-steam login --non-interactive
-easy-steam push --skip-download
+boiler doctor --json --strict
+boiler login --non-interactive
+boiler push --skip-download
 ```
 
 Recommended environment variables:
 
 ```bash
-export EASY_STEAM_USERNAME=buildbot
-export EASY_STEAM_PASSWORD=super-secret
-export EASY_STEAM_NON_INTERACTIVE=1
+export BOILER_USERNAME=buildbot
+export BOILER_PASSWORD=super-secret
+export BOILER_NON_INTERACTIVE=1
 ```
 
 If Steam Guard code entry is required in CI, also provide:
 
 ```bash
-export EASY_STEAM_GUARD_CODE=123456
+export BOILER_GUARD_CODE=123456
 ```
 
 ## SteamCMD
 
-`easy-steam` needs SteamCMD to upload builds.
+`boiler` needs SteamCMD to upload builds.
 
-If SteamCMD is not found, `easy-steam` can download it automatically from Valve unless you pass `--skip-download`. If you already have SteamCMD installed, `easy-steam` will look on your `PATH`, in common install locations, and in its own managed install directory.
+If SteamCMD is not found, `boiler` can download it automatically from Valve unless you pass `--skip-download`. If you already have SteamCMD installed, `boiler` will look on your `PATH`, in common install locations, and in its own managed install directory.
 
 ## Security
 
-- Passwords are never stored by `easy-steam`
+- Passwords are never stored by `boiler`
 - Only the Steam username is saved in global config
 - SteamCMD handles its own credential caching
 - For automation, use a dedicated Steam account rather than your personal account
 
-Global config is stored in `~/.easy-steam/config.json`.
+Global config is stored in `~/.boiler/config.json`.
 
 ## Development
 
 ```bash
-git clone https://github.com/your-username/easy-steam.git
-cd easy-steam
+git clone https://github.com/your-username/boiler.git
+cd boiler
 npm install
 npm run build
 npm run dev -- --help

@@ -31,10 +31,10 @@ export function resolveLoginOptions(
   env: NodeJS.ProcessEnv = process.env
 ): LoginOptions {
   return {
-    username: options.username ?? env.EASY_STEAM_USERNAME,
-    password: readEnvSecret(options.passwordEnv, env, 'Steam password') ?? env.EASY_STEAM_PASSWORD,
-    guardCode: readEnvSecret(options.guardCodeEnv, env, 'Steam Guard code') ?? env.EASY_STEAM_GUARD_CODE,
-    nonInteractive: Boolean(options.nonInteractive || parseBooleanEnv(env.EASY_STEAM_NON_INTERACTIVE)),
+    username: options.username ?? env.BOILER_USERNAME,
+    password: readEnvSecret(options.passwordEnv, env, 'Steam password') ?? env.BOILER_PASSWORD,
+    guardCode: readEnvSecret(options.guardCodeEnv, env, 'Steam Guard code') ?? env.BOILER_GUARD_CODE,
+    nonInteractive: Boolean(options.nonInteractive || parseBooleanEnv(env.BOILER_NON_INTERACTIVE)),
   };
 }
 
