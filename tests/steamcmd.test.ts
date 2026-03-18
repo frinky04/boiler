@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { parseBuildId, parseUploadProgress, isLoginFailure, needsSteamGuard, isSuccessfulBuild, classifyCachedLoginProbe } from '../src/core/steamcmd.js';
+import {
+  parseBuildId,
+  parseUploadProgress,
+  isLoginFailure,
+  needsSteamGuard,
+  isSuccessfulBuild,
+  classifyCachedLoginProbe,
+  processSteamCmdOutputChunk,
+  flushSteamCmdOutputBuffer,
+} from '../src/core/steamcmd.js';
 
 describe('output parsing', () => {
   it('parses BuildID from success output', () => {
@@ -12,6 +21,32 @@ describe('output parsing', () => {
     expect(parseUploadProgress('Uploading content... 45.2%')).toBe(45.2);
     expect(parseUploadProgress('100%')).toBe(100);
     expect(parseUploadProgress('no percentage')).toBeNull();
+  });
+
+  it('processes carriage-return progress updates from stream chunks', () => {
+    const lines: string[] = [];
+    const state = processSteamCmdOutputChunk(
+      'Uploading content... 12.5%\rUploading content... 55.0%\r',
+      { buffered: '', aborted: false },
+      { onOutput: (line) => lines.push(line) }
+    );
+
+    expect(lines).toEqual([
+      'Uploading content... 12.5%',
+      'Uploading content... 55.0%',
+    ]);
+    expect(state.buffered).toBe('');
+  });
+
+  it('flushes a final buffered line without a trailing newline', () => {
+    const lines: string[] = [];
+    const flushed = flushSteamCmdOutputBuffer(
+      { buffered: 'Uploading content... 99.9%', aborted: false },
+      { onOutput: (line) => lines.push(line) }
+    );
+
+    expect(lines).toEqual(['Uploading content... 99.9%']);
+    expect(flushed.buffered).toBe('');
   });
 
   it('detects login failures', () => {

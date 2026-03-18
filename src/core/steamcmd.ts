@@ -135,6 +135,52 @@ export interface CachedLoginProbeResult {
 const LOGGED_IN_RE = /Logged in OK|Waiting for user info\.\.\.OK|Login Success/i;
 const PASSWORD_PROMPT_RE = /password:/i;
 
+export interface StreamProcessState {
+  buffered: string;
+  aborted: boolean;
+}
+
+export function processSteamCmdOutputChunk(
+  chunk: string,
+  state: StreamProcessState,
+  options: Pick<RunSteamCmdOptions, 'onOutput' | 'abortPattern'>
+): StreamProcessState {
+  const text = state.buffered + chunk;
+  const parts = text.split(/\r?\n|\r/g);
+  const nextBuffered = parts.pop() ?? '';
+  let aborted = state.aborted;
+
+  for (const part of parts) {
+    const trimmed = part.trim();
+    if (!trimmed) continue;
+    options.onOutput?.(trimmed);
+    if (options.abortPattern && !aborted && options.abortPattern.test(trimmed)) {
+      aborted = true;
+    }
+  }
+
+  return {
+    buffered: nextBuffered,
+    aborted,
+  };
+}
+
+export function flushSteamCmdOutputBuffer(
+  state: StreamProcessState,
+  options: Pick<RunSteamCmdOptions, 'onOutput' | 'abortPattern'>
+): StreamProcessState {
+  const trimmed = state.buffered.trim();
+  if (!trimmed) {
+    return { ...state, buffered: '' };
+  }
+
+  options.onOutput?.(trimmed);
+  return {
+    buffered: '',
+    aborted: state.aborted || Boolean(options.abortPattern?.test(trimmed)),
+  };
+}
+
 export function runSteamCmd(
   steamcmdPath: string,
   args: string[],
@@ -160,6 +206,8 @@ export function runSteamCmd(
     let stderr = '';
     let timedOut = false;
     let aborted = false;
+    let stdoutState: StreamProcessState = { buffered: '', aborted: false };
+    let stderrState: StreamProcessState = { buffered: '', aborted: false };
 
     const timer = setTimeout(() => {
       timedOut = true;
@@ -169,24 +217,27 @@ export function runSteamCmd(
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       stdout += text;
-      for (const line of text.split('\n')) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
-        if (opts.onOutput) opts.onOutput(trimmed);
-        // Kill immediately if we see the abort pattern (e.g. Steam Guard prompt)
-        if (opts.abortPattern && !aborted && opts.abortPattern.test(trimmed)) {
-          aborted = true;
-          proc.kill('SIGTERM');
-        }
+      stdoutState = processSteamCmdOutputChunk(text, stdoutState, opts);
+      if (!aborted && stdoutState.aborted) {
+        aborted = true;
+        proc.kill('SIGTERM');
       }
     });
 
     proc.stderr.on('data', (data: Buffer) => {
-      stderr += data.toString();
+      const text = data.toString();
+      stderr += text;
+      stderrState = processSteamCmdOutputChunk(text, stderrState, opts);
+      if (!aborted && stderrState.aborted) {
+        aborted = true;
+        proc.kill('SIGTERM');
+      }
     });
 
     proc.on('close', (code) => {
       clearTimeout(timer);
+      stdoutState = flushSteamCmdOutputBuffer(stdoutState, opts);
+      stderrState = flushSteamCmdOutputBuffer(stderrState, opts);
       if (timedOut) {
         resolve({
           exitCode: 1,
