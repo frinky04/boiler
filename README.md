@@ -51,6 +51,7 @@ easy-steam init
 
 Upload a build to Steam. Reads config from `.easy-steam.json`, generates VDF files, and runs SteamCMD.
 If `--desc` is omitted, a timestamp-based description is generated automatically.
+For projects with multiple configured depots, folder override is intentionally blocked to avoid accidentally uploading the same build to every depot.
 
 ```bash
 # Use config from .easy-steam.json
@@ -70,6 +71,9 @@ easy-steam push ./build --set-live beta
 
 # Preview generated VDF without uploading
 easy-steam push ./build --dry-run
+
+# Fail instead of auto-downloading SteamCMD
+easy-steam push --skip-download
 ```
 
 **Options:**
@@ -81,18 +85,34 @@ easy-steam push ./build --dry-run
 | `--desc <text>` | Build description visible in Steamworks dashboard |
 | `--set-live <branch>` | Set build live on a branch after upload (overrides config `setLive`) |
 | `--dry-run` | Print generated VDF files without uploading |
+| `--skip-download` | Fail if SteamCMD is missing instead of downloading it automatically |
 
 ### `easy-steam status`
 
-Show current project config, SteamCMD path, login status, and last upload info.
+Show current project config, build output directory, SteamCMD path, saved username, and last upload info.
 
 ```bash
 easy-steam status
 ```
 
+### `easy-steam doctor`
+
+Run preflight checks for project config, depot content roots, SteamCMD availability, saved username, and cached Steam login.
+
+```bash
+# Human-readable preflight
+easy-steam doctor
+
+# Machine-readable output for CI
+easy-steam doctor --json
+
+# Fail on warnings as well as errors
+easy-steam doctor --json --strict
+```
+
 ### `easy-steam` (no arguments)
 
-Launches an interactive menu — pick login, init, push, or status from a list. Useful if you don't want to remember flags.
+Launches an interactive menu — pick login, init, push, status, or doctor from a list. Useful if you don't want to remember flags.
 
 ## Config
 
@@ -126,7 +146,7 @@ Global config (username, SteamCMD path) is stored in `~/.easy-steam/config.json`
 
 ## SteamCMD
 
-easy-steam needs SteamCMD to upload builds. On first run, if SteamCMD isn't found on your system, easy-steam will offer to download it automatically from Valve's servers.
+easy-steam needs SteamCMD to upload builds. On first run, if SteamCMD isn't found on your system, easy-steam will download it automatically from Valve's servers unless you pass `--skip-download`.
 
 You can also install it yourself and easy-steam will find it on your PATH or in common install locations.
 

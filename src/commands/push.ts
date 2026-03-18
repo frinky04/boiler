@@ -2,7 +2,7 @@ import { resolve, dirname, relative, isAbsolute } from 'path';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
-import { ensureSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
+import { ensureSteamCmd, findSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import * as logger from '../util/logger.js';
 import type { PushOptions, AppBuildVdfConfig, DepotConfig, LastPush, ProjectConfig } from '../types/index.js';
@@ -54,6 +54,19 @@ function isAbsolutePath(value: string): boolean {
 export interface PreparedDepots {
   contentRoot: string;
   depots: DepotConfig[];
+}
+
+export interface PushPlan {
+  appId: number;
+  depots: DepotConfig[];
+  description: string;
+  outputDir: string;
+  setLive: string | null;
+}
+
+export interface PushSteamCmdDependencies {
+  ensureSteamCmd: typeof ensureSteamCmd;
+  findSteamCmd: typeof findSteamCmd;
 }
 
 export function resolvePushDepots(
@@ -126,26 +139,55 @@ export function prepareDepotsForVdf(depots: DepotConfig[]): PreparedDepots {
   };
 }
 
+export function buildPushPlan(
+  folder: string | undefined,
+  options: PushOptions,
+  projectConfig: ProjectConfig | null,
+  now: Date = new Date()
+): PushPlan {
+  const appId = options.app ?? projectConfig?.appId;
+  if (!appId) {
+    throw new Error('No App ID. Run `easy-steam init` or pass --app <id>.');
+  }
+
+  return {
+    appId,
+    depots: resolvePushDepots(folder, options, projectConfig),
+    description: options.desc?.trim() || `build ${now.toISOString().slice(0, 19).replace('T', ' ')}`,
+    outputDir: resolveBuildOutputDir(projectConfig?.buildOutput),
+    setLive: options.setLive ?? projectConfig?.setLive ?? null,
+  };
+}
+
+export async function resolveSteamCmdPathForPush(
+  options: PushOptions,
+  deps: PushSteamCmdDependencies = { ensureSteamCmd, findSteamCmd }
+): Promise<string> {
+  if (options.skipDownload) {
+    const steamcmdPath = await deps.findSteamCmd();
+    if (!steamcmdPath) {
+      throw new Error('SteamCMD was not found and `--skip-download` is set. Install SteamCMD or remove `--skip-download`.');
+    }
+    return steamcmdPath;
+  }
+
+  return deps.ensureSteamCmd();
+}
+
 export async function pushCommand(folder: string | undefined, options: PushOptions): Promise<void> {
   // 1. Resolve config
   const projectConfig = loadProjectConfig();
 
-  const appId = options.app ?? projectConfig?.appId;
-  if (!appId) {
-    logger.error('No App ID. Run `easy-steam init` or pass --app <id>.');
-    process.exit(1);
-  }
-
-  let depots: DepotConfig[];
+  let plan: PushPlan;
   try {
-    depots = resolvePushDepots(folder, options, projectConfig);
+    plan = buildPushPlan(folder, options, projectConfig);
   } catch (err) {
     logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
   // 2. Validate content folders
-  for (const depot of depots) {
+  for (const depot of plan.depots) {
     const absPath = resolve(depot.contentRoot);
     if (!existsSync(absPath)) {
       logger.error(`Content folder not found: ${absPath}`);
@@ -169,12 +211,9 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
     }
   }
 
-  const description = options.desc?.trim() || `build ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`;
-  const outputDir = resolveBuildOutputDir(projectConfig?.buildOutput);
-
   let prepared: PreparedDepots;
   try {
-    prepared = prepareDepotsForVdf(depots);
+    prepared = prepareDepotsForVdf(plan.depots);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     logger.error(message);
@@ -182,11 +221,11 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   }
 
   const vdfConfig: AppBuildVdfConfig = {
-    appId,
-    description,
+    appId: plan.appId,
+    description: plan.description,
     contentRoot: prepared.contentRoot,
-    buildOutput: outputDir,
-    setLive: options.setLive ?? projectConfig?.setLive ?? null,
+    buildOutput: plan.outputDir,
+    setLive: plan.setLive,
     depots: prepared.depots,
   };
 
@@ -212,14 +251,20 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   }
 
   // 5. Ensure SteamCMD
-  const steamcmdPath = await ensureSteamCmd();
+  let steamcmdPath: string;
+  try {
+    steamcmdPath = await resolveSteamCmdPathForPush(options);
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
   // 6. Write VDF
-  const { appVdfPath } = writeVdfFiles(vdfConfig, outputDir);
+  const { appVdfPath } = writeVdfFiles(vdfConfig, plan.outputDir);
   logger.dim(`  VDF written to ${appVdfPath}`);
 
   // 7. Execute upload
-  const spin = logger.spinner(`Uploading App ${appId}...`);
+  const spin = logger.spinner(`Uploading App ${plan.appId}...`);
   spin.start();
 
   const result = await runSteamCmd(
@@ -231,7 +276,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
         // Progress percentage
         const progress = parseUploadProgress(line);
         if (progress !== null) {
-          spin.text = `Uploading App ${appId}... ${progress.toFixed(1)}%`;
+          spin.text = `Uploading App ${plan.appId}... ${progress.toFixed(1)}%`;
           return;
         }
 
@@ -242,7 +287,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
         } else if (/Scanning content/i.test(line)) {
           spin.text = 'Scanning content files...';
         } else if (/Uploading content/i.test(line)) {
-          spin.text = `Uploading App ${appId}...`;
+          spin.text = `Uploading App ${plan.appId}...`;
         } else if (/Processing|Committing/i.test(line)) {
           spin.text = 'Processing build on Steam servers...';
         } else if (/new files|changed files|unchanged/i.test(line)) {
@@ -263,31 +308,31 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   const lastPush: LastPush = {
     timestamp: new Date().toISOString(),
     buildId,
-    description,
-    appId,
+    description: plan.description,
+    appId: plan.appId,
     success: false,
   };
 
   if (isSuccessfulBuild(combined)) {
     lastPush.success = true;
-    saveLastPush(lastPush, outputDir);
+    saveLastPush(lastPush, plan.outputDir);
     spin.succeed(`Build uploaded successfully!${buildId ? ` BuildID: ${buildId}` : ''}`);
     logger.dim('  Set it live in the Steamworks dashboard or use --set-live <branch>.');
   } else if (isRateLimited(combined)) {
-    saveLastPush(lastPush, outputDir);
+    saveLastPush(lastPush, plan.outputDir);
     spin.fail('Rate limited by Steam');
     logger.error('Too many login attempts. Wait 15-30 minutes before trying again.');
     process.exit(1);
   } else if (isLoginFailure(combined)) {
-    saveLastPush(lastPush, outputDir);
+    saveLastPush(lastPush, plan.outputDir);
     spin.fail('Upload failed — login error');
     logger.error('Your cached credentials may have expired. Run `easy-steam login` again.');
     process.exit(1);
   } else {
-    saveLastPush(lastPush, outputDir);
+    saveLastPush(lastPush, plan.outputDir);
     spin.fail(`Upload failed (exit code ${result.exitCode})`);
     // Save full log for debugging
-    const logPath = resolve(outputDir, 'last-error.log');
+    const logPath = resolve(plan.outputDir, 'last-error.log');
     const { writeFileSync } = await import('fs');
     writeFileSync(logPath, combined, 'utf-8');
     logger.error(`Full SteamCMD output saved to ${logPath}`);

@@ -37,6 +37,7 @@ export interface PushOptions {
   desc?: string;
   setLive?: string;
   dryRun?: boolean;
+  skipDownload?: boolean;
 }
 
 export interface LastPush {

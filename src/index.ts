@@ -34,6 +34,7 @@ program
   .option('--desc <text>', 'Build description')
   .option('--set-live <branch>', 'Set build live on branch after upload')
   .option('--dry-run', 'Preview generated VDF without uploading')
+  .option('--skip-download', 'Fail if SteamCMD is missing instead of downloading it')
   .action(pushCommand);
 
 program
@@ -44,6 +45,8 @@ program
 program
   .command('doctor')
   .description('Run preflight checks for config, auth, and SteamCMD')
+  .option('--json', 'Print a machine-readable report')
+  .option('--strict', 'Exit non-zero on warnings as well as errors')
   .action(doctorCommand);
 
 // No subcommand → interactive wizard

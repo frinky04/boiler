@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { prepareDepotsForVdf, resolvePushDepots } from '../src/commands/push.js';
+import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush } from '../src/commands/push.js';
 import type { DepotConfig, ProjectConfig, PushOptions } from '../src/types/index.js';
 
 function createDepot(depotId: number, contentRoot: string, localPath: string = '*'): DepotConfig {
@@ -83,5 +83,53 @@ describe('resolvePushDepots', () => {
     ]);
 
     expect(() => resolvePushDepots('./dist', {}, project)).toThrow(/single-depot projects/i);
+  });
+});
+
+describe('buildPushPlan', () => {
+  it('uses config values and computes a deterministic description', () => {
+    const project = createProjectConfig([createDepot(481, './build')]);
+    project.buildOutput = '.artifacts/steam';
+    project.setLive = 'beta';
+
+    const plan = buildPushPlan(undefined, {}, project, new Date('2026-03-19T12:34:56.000Z'));
+
+    expect(plan.appId).toBe(480);
+    expect(plan.description).toBe('build 2026-03-19 12:34:56');
+    expect(plan.outputDir).toMatch(/\.artifacts[\\/]steam$/);
+    expect(plan.setLive).toBe('beta');
+  });
+
+  it('lets CLI options override config values', () => {
+    const project = createProjectConfig([createDepot(481, './build')]);
+
+    const plan = buildPushPlan('./dist', { app: 999, desc: 'release', setLive: 'rc' }, project);
+
+    expect(plan.appId).toBe(999);
+    expect(plan.description).toBe('release');
+    expect(plan.setLive).toBe('rc');
+    expect(plan.depots[0].contentRoot).toBe('./dist');
+  });
+});
+
+describe('resolveSteamCmdPathForPush', () => {
+  it('fails fast in no-download mode when SteamCMD is missing', async () => {
+    await expect(resolveSteamCmdPathForPush(
+      { skipDownload: true },
+      {
+        findSteamCmd: async () => null,
+        ensureSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).rejects.toThrow(/--skip-download/i);
+  });
+
+  it('uses an existing SteamCMD install in no-download mode', async () => {
+    await expect(resolveSteamCmdPathForPush(
+      { skipDownload: true },
+      {
+        findSteamCmd: async () => '/usr/bin/steamcmd',
+        ensureSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).resolves.toBe('/usr/bin/steamcmd');
   });
 });
