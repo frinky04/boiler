@@ -4,6 +4,7 @@ import {
   parseUploadProgress,
   isLoginFailure,
   needsSteamGuard,
+  isSuccessfulLogin,
   isSuccessfulBuild,
   classifyCachedLoginProbe,
   processSteamCmdOutputChunk,
@@ -58,7 +59,16 @@ describe('output parsing', () => {
   it('detects Steam Guard requirement', () => {
     expect(needsSteamGuard('Steam Guard code required')).toBe(true);
     expect(needsSteamGuard('Two-factor authentication needed')).toBe(true);
+    expect(needsSteamGuard('Please confirm the login in the Steam Mobile app on your phone.')).toBe(true);
+    expect(needsSteamGuard('Waiting for confirmation...')).toBe(true);
     expect(needsSteamGuard('Logged in OK')).toBe(false);
+  });
+
+  it('detects successful logins across SteamCMD success variants', () => {
+    expect(isSuccessfulLogin('Logged in OK')).toBe(true);
+    expect(isSuccessfulLogin('Waiting for user info...OK')).toBe(true);
+    expect(isSuccessfulLogin('Login Success')).toBe(true);
+    expect(isSuccessfulLogin('Waiting for confirmation...')).toBe(false);
   });
 
   it('detects successful builds', () => {
@@ -81,6 +91,21 @@ describe('output parsing', () => {
       exitCode: 1,
       stdout: 'Logging in user foo',
       stderr: 'Password: ',
+    });
+
+    expect(result.status).toBe('missing');
+  });
+
+  it('classifies mobile approval output as a missing cached login', () => {
+    const result = classifyCachedLoginProbe({
+      exitCode: 1,
+      stdout: [
+        'Logging in user foo',
+        'This account is protected by a Steam Guard mobile authenticator.',
+        'Please confirm the login in the Steam Mobile app on your phone.',
+        'Waiting for confirmation...',
+      ].join('\n'),
+      stderr: '',
     });
 
     expect(result.status).toBe('missing');

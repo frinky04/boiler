@@ -134,6 +134,7 @@ export interface CachedLoginProbeResult {
 
 const LOGGED_IN_RE = /Logged in OK|Waiting for user info\.\.\.OK|Login Success/i;
 const PASSWORD_PROMPT_RE = /password:/i;
+const STEAM_GUARD_PROMPT_RE = /Steam Guard|Two-factor|two factor|confirm the login in the Steam Mobile app|Waiting for confirmation|Steam Guard mobile authenticator/i;
 
 export interface StreamProcessState {
   buffered: string;
@@ -277,7 +278,11 @@ export function isRateLimited(output: string): boolean {
 }
 
 export function needsSteamGuard(output: string): boolean {
-  return /Steam Guard|Two-factor|two factor/i.test(output);
+  return STEAM_GUARD_PROMPT_RE.test(output);
+}
+
+export function isSuccessfulLogin(output: string): boolean {
+  return LOGGED_IN_RE.test(output);
 }
 
 export function isSuccessfulBuild(output: string): boolean {
@@ -287,7 +292,7 @@ export function isSuccessfulBuild(output: string): boolean {
 export function classifyCachedLoginProbe(result: SteamCmdResult): CachedLoginProbeResult {
   const output = result.stdout + result.stderr;
 
-  if (LOGGED_IN_RE.test(output)) {
+  if (isSuccessfulLogin(output)) {
     return {
       status: 'valid',
       message: 'Cached Steam login is valid.',
@@ -332,7 +337,7 @@ export async function probeCachedLogin(steamcmdPath: string, username: string): 
     ['+login', username, '+quit'],
     {
       timeoutMs: 120_000,
-      abortPattern: /Steam Guard|Two-factor|two factor|password:/i,
+      abortPattern: new RegExp(`${STEAM_GUARD_PROMPT_RE.source}|${PASSWORD_PROMPT_RE.source}`, 'i'),
     }
   );
 

@@ -33,7 +33,7 @@ That's it. easy-steam generates the VDF files, invokes SteamCMD, and reports the
 
 ### `easy-steam login`
 
-Authenticate with your Steam account. Handles Steam Guard codes interactively. Credentials are cached by SteamCMD itself — easy-steam only stores your username.
+Authenticate with your Steam account. Handles Steam Guard interactively, including email codes, app codes, and Steam Mobile approval prompts. Credentials are cached by SteamCMD itself — easy-steam only stores your username.
 
 ```bash
 easy-steam login
@@ -44,7 +44,7 @@ EASY_STEAM_PASSWORD=super-secret \
 easy-steam login --non-interactive
 ```
 
-For automation, `login` also supports `--username`, `--password-env <var>`, `--guard-code-env <var>`, and the environment variables `EASY_STEAM_USERNAME`, `EASY_STEAM_PASSWORD`, `EASY_STEAM_GUARD_CODE`, and `EASY_STEAM_NON_INTERACTIVE=1`.
+For automation, `login` also supports `--username`, `--password-env <var>`, `--guard-code-env <var>`, and the environment variables `EASY_STEAM_USERNAME`, `EASY_STEAM_PASSWORD`, `EASY_STEAM_GUARD_CODE`, and `EASY_STEAM_NON_INTERACTIVE=1`. If Steam requires approval in the Steam Mobile app, easy-steam now tells you to open Steam on your phone and approve the login instead of leaving you waiting with no explanation.
 
 ### `easy-steam init`
 
