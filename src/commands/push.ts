@@ -5,7 +5,7 @@ import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../co
 import { ensureSteamCmd, findSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import * as logger from '../util/logger.js';
-import type { PushOptions, AppBuildVdfConfig, DepotConfig, LastPush, ProjectConfig } from '../types/index.js';
+import type { PushOptions, AppBuildVdfConfig, DepotConfig, DepotFileMapping, LastPush, ProjectConfig } from '../types/index.js';
 
 function isPathWithin(parent: string, child: string): boolean {
   const rel = relative(parent, child);
@@ -82,7 +82,7 @@ export function resolvePushDepots(
     return [{
       depotId: options.depot,
       contentRoot: folder,
-      fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+      fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
       fileExclusions: [],
     }];
   }
@@ -117,19 +117,21 @@ export function prepareDepotsForVdf(depots: DepotConfig[]): PreparedDepots {
   }
 
   const preparedDepots = depots.map((depot, i) => {
-    if (isAbsolutePath(depot.fileMapping.localPath)) {
-      throw new Error(`Depot ${depot.depotId} has an absolute fileMapping.localPath, which is unsupported.`);
-    }
-
     const rootRelativeToCommon = relative(contentRoot, absoluteRoots[i]);
-    const localPath = joinLocalPath(rootRelativeToCommon, depot.fileMapping.localPath);
+    const fileMappings: DepotFileMapping[] = depot.fileMappings.map((mapping, mappingIndex) => {
+      if (isAbsolutePath(mapping.localPath)) {
+        throw new Error(`Depot ${depot.depotId} file mapping ${mappingIndex + 1} has an absolute localPath, which is unsupported.`);
+      }
+
+      return {
+        ...mapping,
+        localPath: joinLocalPath(rootRelativeToCommon, mapping.localPath),
+      };
+    });
 
     return {
       ...depot,
-      fileMapping: {
-        ...depot.fileMapping,
-        localPath,
-      },
+      fileMappings,
     };
   });
 

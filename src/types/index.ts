@@ -1,11 +1,13 @@
+export interface DepotFileMapping {
+  localPath: string;
+  depotPath: string;
+  recursive: boolean;
+}
+
 export interface DepotConfig {
   depotId: number;
   contentRoot: string;
-  fileMapping: {
-    localPath: string;
-    depotPath: string;
-    recursive: boolean;
-  };
+  fileMappings: DepotFileMapping[];
   fileExclusions: string[];
 }
 

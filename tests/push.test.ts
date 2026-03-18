@@ -6,11 +6,11 @@ function createDepot(depotId: number, contentRoot: string, localPath: string = '
   return {
     depotId,
     contentRoot,
-    fileMapping: {
+    fileMappings: [{
       localPath,
       depotPath: '.',
       recursive: true,
-    },
+    }],
     fileExclusions: [],
   };
 }
@@ -30,7 +30,7 @@ describe('prepareDepotsForVdf', () => {
     const result = prepareDepotsForVdf([depot]);
 
     expect(result.depots).toHaveLength(1);
-    expect(result.depots[0].fileMapping.localPath).toBe('*');
+    expect(result.depots[0].fileMappings[0].localPath).toBe('*');
   });
 
   it('prefixes local paths for multiple depot roots', () => {
@@ -39,13 +39,31 @@ describe('prepareDepotsForVdf', () => {
       createDepot(2002, './build/linux', '*.so'),
     ]);
 
-    expect(result.depots[0].fileMapping.localPath).toBe('win/*');
-    expect(result.depots[1].fileMapping.localPath).toBe('linux/*.so');
+    expect(result.depots[0].fileMappings[0].localPath).toBe('win/*');
+    expect(result.depots[1].fileMappings[0].localPath).toBe('linux/*.so');
   });
 
-  it('throws for absolute fileMapping localPath values', () => {
+  it('throws for absolute file mapping localPath values', () => {
     const depot = createDepot(3001, './build', 'C:\\abs\\*');
-    expect(() => prepareDepotsForVdf([depot])).toThrow(/absolute fileMapping\.localPath/i);
+    expect(() => prepareDepotsForVdf([depot])).toThrow(/absolute localPath/i);
+  });
+
+  it('rewrites every file mapping relative to the shared content root', () => {
+    const result = prepareDepotsForVdf([
+      {
+        depotId: 3002,
+        contentRoot: './build/win',
+        fileMappings: [
+          { localPath: '*', depotPath: '.', recursive: true },
+          { localPath: 'extras/*.dll', depotPath: './bin', recursive: false },
+        ],
+        fileExclusions: [],
+      },
+      createDepot(3003, './build/linux'),
+    ]);
+
+    expect(result.depots[0].fileMappings[0].localPath).toBe('win/*');
+    expect(result.depots[0].fileMappings[1].localPath).toBe('win/extras/*.dll');
   });
 });
 
@@ -58,7 +76,7 @@ describe('resolvePushDepots', () => {
       {
         depotId: 481,
         contentRoot: './build',
-        fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+        fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
         fileExclusions: [],
       },
     ]);

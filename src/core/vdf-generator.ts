@@ -17,12 +17,18 @@ export function generateDepotBuildVdf(depot: DepotConfig): string {
   lines.push('{');
   lines.push(vdfKeyValue('DepotID', String(depot.depotId), 1));
   lines.push('');
-  lines.push(`${indent(1)}"FileMapping"`);
-  lines.push(`${indent(1)}{`);
-  lines.push(vdfKeyValue('LocalPath', depot.fileMapping.localPath, 2));
-  lines.push(vdfKeyValue('DepotPath', depot.fileMapping.depotPath, 2));
-  lines.push(vdfKeyValue('Recursive', depot.fileMapping.recursive ? '1' : '0', 2));
-  lines.push(`${indent(1)}}`);
+
+  depot.fileMappings.forEach((mapping, index) => {
+    lines.push(`${indent(1)}"FileMapping"`);
+    lines.push(`${indent(1)}{`);
+    lines.push(vdfKeyValue('LocalPath', mapping.localPath, 2));
+    lines.push(vdfKeyValue('DepotPath', mapping.depotPath, 2));
+    lines.push(vdfKeyValue('Recursive', mapping.recursive ? '1' : '0', 2));
+    lines.push(`${indent(1)}}`);
+    if (index < depot.fileMappings.length - 1 || depot.fileExclusions.length > 0) {
+      lines.push('');
+    }
+  });
 
   for (const exclusion of depot.fileExclusions) {
     lines.push(vdfKeyValue('FileExclusion', exclusion, 1));

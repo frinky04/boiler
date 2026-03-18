@@ -65,11 +65,13 @@ export async function initCommand(): Promise<void> {
     depots.push({
       depotId: parseInt(depotAnswers.depotId, 10),
       contentRoot: depotAnswers.contentRoot,
-      fileMapping: {
-        localPath: '*',
-        depotPath: '.',
-        recursive: true,
-      },
+      fileMappings: [
+        {
+          localPath: '*',
+          depotPath: '.',
+          recursive: true,
+        },
+      ],
       fileExclusions: depotAnswers.exclusions,
     });
 

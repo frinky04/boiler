@@ -49,6 +49,7 @@ For automation, `login` also supports `--username`, `--password-env <var>`, `--g
 ### `easy-steam init`
 
 Interactive wizard that creates a `.easy-steam.json` config in your project root. Prompts for your App ID, Depot ID(s), content folder, and file exclusions.
+Each depot starts with one default file mapping, and you can extend the config manually if you need more than one mapping per depot.
 
 ```bash
 easy-steam init
@@ -132,11 +133,13 @@ Running `easy-steam init` creates `.easy-steam.json` in your project root:
     {
       "depotId": 481,
       "contentRoot": "./build",
-      "fileMapping": {
-        "localPath": "*",
-        "depotPath": ".",
-        "recursive": true
-      },
+      "fileMappings": [
+        {
+          "localPath": "*",
+          "depotPath": ".",
+          "recursive": true
+        }
+      ],
       "fileExclusions": ["*.pdb", "*.map", ".DS_Store", "Thumbs.db"]
     }
   ],
@@ -150,6 +153,22 @@ Commit this file to your repo. It contains no secrets.
 Global config (username, SteamCMD path) is stored in `~/.easy-steam/config.json` and is never committed.
 
 `buildOutput` is the directory used for generated VDF/log artifacts, and `setLive` is used by default when running `push` unless you override it with `--set-live`.
+
+If a depot needs more than one Steam `FileMapping`, add multiple entries to `fileMappings`:
+
+```json
+{
+  "depotId": 481,
+  "contentRoot": "./build",
+  "fileMappings": [
+    { "localPath": "*", "depotPath": ".", "recursive": true },
+    { "localPath": "extras/*.dll", "depotPath": "./bin", "recursive": false }
+  ],
+  "fileExclusions": ["*.pdb"]
+}
+```
+
+Legacy configs that use a single `fileMapping` object are still read automatically, but new configs should use `fileMappings`.
 
 ## SteamCMD
 

@@ -22,11 +22,11 @@ function createProjectConfig(contentRoot: string): ProjectConfig {
       {
         depotId: 481,
         contentRoot,
-        fileMapping: {
+        fileMappings: [{
           localPath: '*',
           depotPath: '.',
           recursive: true,
-        },
+        }],
         fileExclusions: [],
       },
     ],
@@ -60,13 +60,13 @@ describe('validateProjectFilesystemForDoctor', () => {
         {
           depotId: 481,
           contentRoot: './missing-build',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
         {
           depotId: 482,
           contentRoot: './also-missing',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
       ],

@@ -23,7 +23,7 @@ describe('project config', () => {
         {
           depotId: 481,
           contentRoot: './build',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: ['*.pdb'],
         },
       ],
@@ -119,5 +119,27 @@ describe('project config', () => {
     } as ProjectConfig;
 
     expect(() => saveProjectConfig(invalidConfig, TEST_DIR)).toThrow(/at least one depot/i);
+  });
+
+  it('loads legacy configs that use a single fileMapping object', () => {
+    const configPath = join(TEST_DIR, '.easy-steam.json');
+    writeFileSync(configPath, JSON.stringify({
+      appId: 480,
+      depots: [
+        {
+          depotId: 481,
+          contentRoot: './build',
+          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileExclusions: [],
+        },
+      ],
+      buildOutput: '.easy-steam-output',
+      setLive: null,
+    }), 'utf-8');
+
+    const loaded = loadProjectConfig(TEST_DIR);
+    expect(loaded?.depots[0].fileMappings).toEqual([
+      { localPath: '*', depotPath: '.', recursive: true },
+    ]);
   });
 });

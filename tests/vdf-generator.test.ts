@@ -7,7 +7,7 @@ describe('generateDepotBuildVdf', () => {
     const depot: DepotConfig = {
       depotId: 481,
       contentRoot: './build',
-      fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+      fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
       fileExclusions: [],
     };
 
@@ -23,7 +23,7 @@ describe('generateDepotBuildVdf', () => {
     const depot: DepotConfig = {
       depotId: 481,
       contentRoot: './build',
-      fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+      fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
       fileExclusions: ['*.pdb', '*.map'],
     };
 
@@ -36,13 +36,30 @@ describe('generateDepotBuildVdf', () => {
     const depot: DepotConfig = {
       depotId: 500,
       contentRoot: './out',
-      fileMapping: { localPath: '*.exe', depotPath: '.', recursive: false },
+      fileMappings: [{ localPath: '*.exe', depotPath: '.', recursive: false }],
       fileExclusions: [],
     };
 
     const vdf = generateDepotBuildVdf(depot);
     expect(vdf).toContain('"Recursive"\t\t"0"');
     expect(vdf).toContain('"LocalPath"\t\t"*.exe"');
+  });
+
+  it('supports multiple file mappings in one depot', () => {
+    const depot: DepotConfig = {
+      depotId: 700,
+      contentRoot: './out',
+      fileMappings: [
+        { localPath: '*.exe', depotPath: '.', recursive: false },
+        { localPath: 'extras/*', depotPath: './extras', recursive: true },
+      ],
+      fileExclusions: [],
+    };
+
+    const vdf = generateDepotBuildVdf(depot);
+    expect(vdf.match(/"FileMapping"/g)).toHaveLength(2);
+    expect(vdf).toContain('"LocalPath"\t\t"extras/*"');
+    expect(vdf).toContain('"DepotPath"\t\t"./extras"');
   });
 });
 
@@ -57,7 +74,7 @@ describe('generateAppBuildVdf', () => {
         {
           depotId: 481,
           contentRoot: './build',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
       ],
@@ -82,7 +99,7 @@ describe('generateAppBuildVdf', () => {
         {
           depotId: 481,
           contentRoot: './build',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
       ],
@@ -103,7 +120,7 @@ describe('generateAppBuildVdf', () => {
         {
           depotId: 481,
           contentRoot: './build',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
       ],
@@ -123,13 +140,13 @@ describe('generateAppBuildVdf', () => {
         {
           depotId: 481,
           contentRoot: './build/win',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
         {
           depotId: 482,
           contentRoot: './build/linux',
-          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
           fileExclusions: [],
         },
       ],

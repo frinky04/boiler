@@ -1,6 +1,6 @@
 import { existsSync, statSync } from 'fs';
 import { isAbsolute } from 'path';
-import type { ProjectConfig } from '../types/index.js';
+import type { DepotConfig, DepotFileMapping, ProjectConfig } from '../types/index.js';
 
 export function validateAppId(value: string): number | string {
   const n = parseInt(value, 10);
@@ -38,6 +38,21 @@ function isNonEmptyString(value: unknown): value is string {
 
 function isAbsoluteLocalPath(value: string): boolean {
   return isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+function normalizeDepotFileMappings(depot: Record<string, unknown>): DepotFileMapping[] | null {
+  const rawFileMappings = depot.fileMappings;
+  const rawFileMapping = depot.fileMapping;
+
+  if (Array.isArray(rawFileMappings)) {
+    return rawFileMappings as DepotFileMapping[];
+  }
+
+  if (isRecord(rawFileMapping)) {
+    return [rawFileMapping as unknown as DepotFileMapping];
+  }
+
+  return null;
 }
 
 export function validateProjectConfig(config: unknown): string[] {
@@ -95,33 +110,57 @@ export function validateProjectConfig(config: unknown): string[] {
       issues.push(`Depot ${index + 1} must define \`fileExclusions\` as an array of strings.`);
     }
 
-    if (!isRecord(depot.fileMapping)) {
-      issues.push(`Depot ${index + 1} is missing a valid \`fileMapping\` object.`);
+    const fileMappings = normalizeDepotFileMappings(depot);
+    if (!Array.isArray(fileMappings) || fileMappings.length === 0) {
+      issues.push(`Depot ${index + 1} must define \`fileMappings\` as a non-empty array.`);
       return;
     }
 
-    if (!isNonEmptyString(depot.fileMapping.localPath)) {
-      issues.push(`Depot ${index + 1} has an invalid \`fileMapping.localPath\`.`);
-    } else if (isAbsoluteLocalPath(depot.fileMapping.localPath)) {
-      issues.push(`Depot ${index + 1} must not use an absolute \`fileMapping.localPath\`.`);
-    }
+    fileMappings.forEach((mapping, mappingIndex) => {
+      if (!isRecord(mapping)) {
+        issues.push(`Depot ${index + 1} file mapping ${mappingIndex + 1} must be an object.`);
+        return;
+      }
 
-    if (!isNonEmptyString(depot.fileMapping.depotPath)) {
-      issues.push(`Depot ${index + 1} has an invalid \`fileMapping.depotPath\`.`);
-    }
+      if (!isNonEmptyString(mapping.localPath)) {
+        issues.push(`Depot ${index + 1} file mapping ${mappingIndex + 1} has an invalid \`localPath\`.`);
+      } else if (isAbsoluteLocalPath(mapping.localPath)) {
+        issues.push(`Depot ${index + 1} file mapping ${mappingIndex + 1} must not use an absolute \`localPath\`.`);
+      }
 
-    if (typeof depot.fileMapping.recursive !== 'boolean') {
-      issues.push(`Depot ${index + 1} must define \`fileMapping.recursive\` as a boolean.`);
-    }
+      if (!isNonEmptyString(mapping.depotPath)) {
+        issues.push(`Depot ${index + 1} file mapping ${mappingIndex + 1} has an invalid \`depotPath\`.`);
+      }
+
+      if (typeof mapping.recursive !== 'boolean') {
+        issues.push(`Depot ${index + 1} file mapping ${mappingIndex + 1} must define \`recursive\` as a boolean.`);
+      }
+    });
   });
 
   return issues;
 }
 
+function normalizeProjectConfig(config: Record<string, unknown>): ProjectConfig {
+  const depots = (config.depots as Record<string, unknown>[]).map((depot) => ({
+    depotId: depot.depotId as number,
+    contentRoot: depot.contentRoot as string,
+    fileMappings: normalizeDepotFileMappings(depot) as DepotFileMapping[],
+    fileExclusions: depot.fileExclusions as string[],
+  })) satisfies DepotConfig[];
+
+  return {
+    appId: config.appId as number,
+    depots,
+    buildOutput: config.buildOutput as string,
+    setLive: (config.setLive as string | null | undefined) ?? null,
+  };
+}
+
 export function assertValidProjectConfig(config: unknown, source: string): ProjectConfig {
   const issues = validateProjectConfig(config);
   if (issues.length === 0) {
-    return config as ProjectConfig;
+    return normalizeProjectConfig(config as Record<string, unknown>);
   }
 
   throw new Error(`Invalid project config in ${source}:\n- ${issues.join('\n- ')}`);
