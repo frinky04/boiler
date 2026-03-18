@@ -2,6 +2,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, resolve } from 'path';
 import { homedir } from 'os';
 import type { ProjectConfig, GlobalConfig, LastPush } from '../types/index.js';
+import { assertValidProjectConfig } from '../util/validation.js';
 
 const PROJECT_CONFIG_FILE = '.easy-steam.json';
 const GLOBAL_DIR = join(homedir(), '.easy-steam');
@@ -27,11 +28,12 @@ export function projectConfigExists(cwd: string = process.cwd()): boolean {
 export function loadProjectConfig(cwd: string = process.cwd()): ProjectConfig | null {
   const path = getProjectConfigPath(cwd);
   if (!existsSync(path)) return null;
-  return parseJsonFile<ProjectConfig>(path);
+  return assertValidProjectConfig(parseJsonFile<unknown>(path), path);
 }
 
 export function saveProjectConfig(config: ProjectConfig, cwd: string = process.cwd()): void {
   const path = getProjectConfigPath(cwd);
+  assertValidProjectConfig(config, path);
   writeFileSync(path, JSON.stringify(config, null, 2) + '\n', 'utf-8');
 }
 

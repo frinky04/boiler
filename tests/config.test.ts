@@ -16,8 +16,8 @@ afterEach(() => {
 });
 
 describe('project config', () => {
-  it('saves and loads config', () => {
-    const config: ProjectConfig = {
+  function createConfig(): ProjectConfig {
+    return {
       appId: 480,
       depots: [
         {
@@ -30,6 +30,10 @@ describe('project config', () => {
       buildOutput: '.easy-steam-output',
       setLive: null,
     };
+  }
+
+  it('saves and loads config', () => {
+    const config = createConfig();
 
     saveProjectConfig(config, TEST_DIR);
     expect(projectConfigExists(TEST_DIR)).toBe(true);
@@ -45,9 +49,8 @@ describe('project config', () => {
 
   it('writes valid JSON', () => {
     const config: ProjectConfig = {
+      ...createConfig(),
       appId: 12345,
-      depots: [],
-      buildOutput: '.easy-steam-output',
       setLive: 'beta',
     };
 
@@ -62,6 +65,32 @@ describe('project config', () => {
     const configPath = join(TEST_DIR, '.easy-steam.json');
     writeFileSync(configPath, '{ invalid json', 'utf-8');
     expect(() => loadProjectConfig(TEST_DIR)).toThrow(/Invalid JSON/);
+  });
+
+  it('throws a readable error for invalid project config semantics', () => {
+    const configPath = join(TEST_DIR, '.easy-steam.json');
+    writeFileSync(configPath, JSON.stringify({
+      appId: 480,
+      depots: [
+        {
+          depotId: 481,
+          contentRoot: './build',
+          fileMapping: { localPath: 'C:\\abs\\*', depotPath: '.', recursive: true },
+          fileExclusions: [],
+        },
+        {
+          depotId: 481,
+          contentRoot: './other-build',
+          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+          fileExclusions: [],
+        },
+      ],
+      buildOutput: '   ',
+      setLive: null,
+    }), 'utf-8');
+
+    expect(() => loadProjectConfig(TEST_DIR)).toThrow(/Invalid project config/);
+    expect(() => loadProjectConfig(TEST_DIR)).toThrow(/duplicated|non-empty string|absolute/i);
   });
 
   it('resolves custom build output relative to the project directory', () => {
@@ -81,5 +110,14 @@ describe('project config', () => {
     saveLastPush(lastPush, outputDir);
 
     expect(loadLastPush(outputDir)).toEqual(lastPush);
+  });
+
+  it('rejects saving invalid project config', () => {
+    const invalidConfig = {
+      ...createConfig(),
+      depots: [],
+    } as ProjectConfig;
+
+    expect(() => saveProjectConfig(invalidConfig, TEST_DIR)).toThrow(/at least one depot/i);
   });
 });

@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
-import { validateProjectConfigForDoctor } from '../src/commands/doctor.js';
+import { validateProjectFilesystemForDoctor } from '../src/commands/doctor.js';
 import type { ProjectConfig } from '../src/types/index.js';
 
 const TEST_DIR = join(process.cwd(), '.test-doctor-tmp');
@@ -35,9 +35,9 @@ function createProjectConfig(contentRoot: string): ProjectConfig {
   };
 }
 
-describe('validateProjectConfigForDoctor', () => {
+describe('validateProjectFilesystemForDoctor', () => {
   it('reports a missing project config', () => {
-    const issues = validateProjectConfigForDoctor(null, TEST_DIR);
+    const issues = validateProjectFilesystemForDoctor(null, TEST_DIR);
 
     expect(issues).toContainEqual({
       level: 'error',
@@ -49,11 +49,11 @@ describe('validateProjectConfigForDoctor', () => {
     const buildDir = join(TEST_DIR, 'build');
     mkdirSync(buildDir, { recursive: true });
 
-    const issues = validateProjectConfigForDoctor(createProjectConfig('./build'), TEST_DIR);
+    const issues = validateProjectFilesystemForDoctor(createProjectConfig('./build'), TEST_DIR);
     expect(issues).toEqual([]);
   });
 
-  it('reports duplicate depot IDs and missing content roots', () => {
+  it('reports missing content roots', () => {
     const project: ProjectConfig = {
       appId: 480,
       depots: [
@@ -64,9 +64,9 @@ describe('validateProjectConfigForDoctor', () => {
           fileExclusions: [],
         },
         {
-          depotId: 481,
+          depotId: 482,
           contentRoot: './also-missing',
-          fileMapping: { localPath: 'C:\\abs\\*', depotPath: '.', recursive: true },
+          fileMapping: { localPath: '*', depotPath: '.', recursive: true },
           fileExclusions: [],
         },
       ],
@@ -74,9 +74,7 @@ describe('validateProjectConfigForDoctor', () => {
       setLive: null,
     };
 
-    const issues = validateProjectConfigForDoctor(project, TEST_DIR);
-    expect(issues.some((issue) => issue.message.includes('Duplicate depot ID: 481'))).toBe(true);
+    const issues = validateProjectFilesystemForDoctor(project, TEST_DIR);
     expect(issues.some((issue) => issue.message.includes('content root does not exist'))).toBe(true);
-    expect(issues.some((issue) => issue.message.includes('absolute fileMapping.localPath'))).toBe(true);
   });
 });
