@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
-import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush, runPrePushValidation } from '../src/commands/push.js';
+import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush, runPrePushValidation, resolveDepotSelectionForPush } from '../src/commands/push.js';
 import type { DepotConfig, ProjectConfig, PushOptions } from '../src/types/index.js';
 
 const TEST_DIR = join(process.cwd(), '.test-push-tmp');
@@ -33,6 +33,16 @@ function createProjectConfig(depots: DepotConfig[]): ProjectConfig {
     appId: 480,
     depots,
     buildOutput: '.boiler-output',
+    setLive: null,
+  };
+}
+
+function createPushPlan(depots: DepotConfig[]) {
+  return {
+    appId: 480,
+    depots,
+    description: 'build test',
+    outputDir: join(TEST_DIR, 'output'),
     setLive: null,
   };
 }
@@ -198,5 +208,103 @@ describe('runPrePushValidation', () => {
 
     const result = runPrePushValidation(invalidProject, []);
     expect(result.errors.some((error) => error.includes('Config error:'))).toBe(true);
+  });
+});
+
+describe('resolveDepotSelectionForPush', () => {
+  it('skips upload when no depots changed and SetLive is not set', () => {
+    const depots = [createDepot(481, join(TEST_DIR, 'win')), createDepot(482, join(TEST_DIR, 'linux'))];
+    const plan = createPushPlan(depots);
+
+    const result = resolveDepotSelectionForPush(
+      plan,
+      {},
+      {
+        detectChangedDepots: () => ({
+          changedDepots: [],
+          unchangedDepotIds: [481, 482],
+          snapshots: {
+            481: { mode: 'metadata', fingerprint: 'a', fileCount: 0, totalBytes: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+            482: { mode: 'metadata', fingerprint: 'b', fileCount: 0, totalBytes: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+          },
+        }),
+      }
+    );
+
+    expect(result.skipUpload).toBe(true);
+    expect(result.plan.depots).toHaveLength(2);
+  });
+
+  it('keeps upload enabled when SetLive is configured even with no content changes', () => {
+    const depots = [createDepot(481, join(TEST_DIR, 'win'))];
+    const plan = { ...createPushPlan(depots), setLive: 'beta' };
+
+    const result = resolveDepotSelectionForPush(
+      plan,
+      {},
+      {
+        detectChangedDepots: () => ({
+          changedDepots: [],
+          unchangedDepotIds: [481],
+          snapshots: {
+            481: { mode: 'metadata', fingerprint: 'a', fileCount: 0, totalBytes: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+          },
+        }),
+      }
+    );
+
+    expect(result.skipUpload).toBe(false);
+    expect(result.plan.depots).toHaveLength(1);
+  });
+
+  it('filters depots down to only changed depots', () => {
+    const depots = [createDepot(481, join(TEST_DIR, 'win')), createDepot(482, join(TEST_DIR, 'linux'))];
+    const plan = createPushPlan(depots);
+
+    const result = resolveDepotSelectionForPush(
+      plan,
+      {},
+      {
+        detectChangedDepots: () => ({
+          changedDepots: [depots[1]],
+          unchangedDepotIds: [481],
+          snapshots: {
+            481: { mode: 'metadata', fingerprint: 'a', fileCount: 0, totalBytes: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+            482: { mode: 'metadata', fingerprint: 'b', fileCount: 0, totalBytes: 0, updatedAt: '2026-01-01T00:00:00.000Z' },
+          },
+        }),
+      }
+    );
+
+    expect(result.skipUpload).toBe(false);
+    expect(result.plan.depots).toHaveLength(1);
+    expect(result.plan.depots[0].depotId).toBe(482);
+  });
+
+  it('uses content hashing mode when requested by env', () => {
+    const depots = [createDepot(481, join(TEST_DIR, 'win'))];
+    const plan = createPushPlan(depots);
+    let seenMode: string | undefined;
+
+    const result = resolveDepotSelectionForPush(
+      plan,
+      {},
+      {
+        detectChangedDepots: (_depots, _outputDir, options) => {
+          seenMode = options?.mode;
+          return {
+            changedDepots: depots,
+            unchangedDepotIds: [],
+            snapshots: {
+              481: { mode: 'content', fingerprint: 'a', fileCount: 1, totalBytes: 1, updatedAt: '2026-01-01T00:00:00.000Z' },
+            },
+          };
+        },
+      },
+      { BOILER_CONTENT_HASH: '1' }
+    );
+
+    expect(seenMode).toBe('content');
+    expect(result.fingerprintMode).toBe('content');
   });
 });

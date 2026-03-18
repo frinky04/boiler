@@ -40,6 +40,7 @@ export interface PushOptions {
   setLive?: string;
   dryRun?: boolean;
   allDepots?: boolean;
+  contentHash?: boolean;
   skipDownload?: boolean;
 }
 

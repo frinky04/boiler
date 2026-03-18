@@ -4,8 +4,10 @@ import { basename, join, relative, resolve } from 'path';
 import type { DepotConfig, DepotFileMapping } from '../types/index.js';
 
 const DEPOT_STATE_FILE = 'depot-state.json';
+export type DepotFingerprintMode = 'metadata' | 'content';
 
 export interface DepotStateRecord {
+  mode: DepotFingerprintMode;
   fingerprint: string;
   fileCount: number;
   totalBytes: number;
@@ -21,6 +23,10 @@ export interface DetectChangedDepotsResult {
   changedDepots: DepotConfig[];
   unchangedDepotIds: number[];
   snapshots: Record<number, DepotStateRecord>;
+}
+
+export interface DepotStateOptions {
+  mode?: DepotFingerprintMode;
 }
 
 interface DepotFileEntry {
@@ -130,8 +136,9 @@ function collectDepotFiles(rootDir: string): DepotFileEntry[] {
   return entries;
 }
 
-export function computeDepotStateRecord(depot: DepotConfig): DepotStateRecord {
+export function computeDepotStateRecord(depot: DepotConfig, options: DepotStateOptions = {}): DepotStateRecord {
   const absoluteRoot = resolve(depot.contentRoot);
+  const mode = options.mode ?? 'metadata';
 
   if (!existsSync(absoluteRoot)) {
     throw new Error(`Depot ${depot.depotId} content root not found: ${absoluteRoot}`);
@@ -158,9 +165,15 @@ export function computeDepotStateRecord(depot: DepotConfig): DepotStateRecord {
     hash.update('\0');
     hash.update(String(Math.floor(entry.mtimeMs)));
     hash.update('\n');
+
+    if (mode === 'content') {
+      hash.update(readFileSync(join(absoluteRoot, entry.relPath)));
+      hash.update('\n');
+    }
   }
 
   return {
+    mode,
     fingerprint: hash.digest('hex'),
     fileCount,
     totalBytes,
@@ -201,19 +214,25 @@ export function saveDepotState(outputDir: string, state: DepotStateFile): void {
   writeFileSync(getDepotStatePath(outputDir), JSON.stringify(state, null, 2) + '\n', 'utf-8');
 }
 
-export function detectChangedDepots(depots: DepotConfig[], outputDir: string): DetectChangedDepotsResult {
+export function detectChangedDepots(
+  depots: DepotConfig[],
+  outputDir: string,
+  options: DepotStateOptions = {}
+): DetectChangedDepotsResult {
   const previousState = loadDepotState(outputDir);
+  const mode = options.mode ?? 'metadata';
   const snapshots: Record<number, DepotStateRecord> = {};
   const changedDepots: DepotConfig[] = [];
   const unchangedDepotIds: number[] = [];
 
   for (const depot of depots) {
-    const snapshot = computeDepotStateRecord(depot);
+    const snapshot = computeDepotStateRecord(depot, { mode });
     snapshots[depot.depotId] = snapshot;
 
     const previous = previousState.depots[String(depot.depotId)];
     if (
       !previous ||
+      previous.mode !== snapshot.mode ||
       previous.fingerprint !== snapshot.fingerprint ||
       previous.fileCount !== snapshot.fileCount ||
       previous.totalBytes !== snapshot.totalBytes

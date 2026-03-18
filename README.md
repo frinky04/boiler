@@ -134,6 +134,9 @@ boiler push ./build --dry-run
 # Force upload of every depot (disable changed-depot detection)
 boiler push --all-depots
 
+# Use strict content hashing for changed-depot detection (slower, safer)
+boiler push --content-hash
+
 # Fail instead of auto-downloading SteamCMD
 boiler push --skip-download
 ```
@@ -143,6 +146,7 @@ Important behavior:
 - If `--desc` is omitted, `boiler` generates a timestamp-based description.
 - `push` retries transient SteamCMD failures up to 3 attempts with exponential backoff.
 - For project-config uploads, `push` auto-detects changed depots and uploads only those depots unless `--all-depots` is set.
+- Set `BOILER_CONTENT_HASH=1` (or pass `--content-hash`) to use strict content hashing instead of metadata-only depot fingerprints.
 - For projects with multiple configured depots, folder override is intentionally blocked to avoid accidentally uploading the same build to every depot.
 
 Push options:
@@ -155,6 +159,7 @@ Push options:
 | `--set-live <branch>` | Set build live on a branch after upload |
 | `--dry-run` | Print generated VDF files without uploading |
 | `--all-depots` | Upload all configured depots and skip changed-depot detection |
+| `--content-hash` | Use strict content hashing for changed-depot detection |
 | `--skip-download` | Fail if SteamCMD is missing instead of downloading it |
 
 Global options:

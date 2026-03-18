@@ -197,6 +197,18 @@ describe('classifySteamCmdFailure', () => {
     expect(failure.retriable).toBe(false);
   });
 
+  it('classifies depot lock conflicts', () => {
+    const failure = classifySteamCmdFailure('ERROR! Depot 481 is locked by another build', 1);
+    expect(failure.category).toBe('depot_lock');
+    expect(failure.retriable).toBe(true);
+  });
+
+  it('classifies manifest/build script failures', () => {
+    const failure = classifySteamCmdFailure('ERROR! invalid app build script', 1);
+    expect(failure.category).toBe('manifest');
+    expect(failure.retriable).toBe(false);
+  });
+
   it('falls back to unknown with exit code context', () => {
     const failure = classifySteamCmdFailure('mystery steamcmd output', 42);
     expect(failure.category).toBe('unknown');

@@ -1,7 +1,7 @@
 import { resolve, dirname, relative, isAbsolute } from 'path';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
-import { computeDepotStateRecord, detectChangedDepots, persistDepotStateSnapshots, type DepotStateRecord } from '../core/depot-state.js';
+import { computeDepotStateRecord, detectChangedDepots, persistDepotStateSnapshots, type DepotFingerprintMode, type DepotStateRecord } from '../core/depot-state.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
 import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
@@ -76,6 +76,28 @@ export interface PrePushValidationResult {
   warnings: string[];
 }
 
+export interface DepotSelectionResult {
+  plan: PushPlan;
+  depotSnapshots: Record<number, DepotStateRecord>;
+  skipUpload: boolean;
+  fingerprintMode: DepotFingerprintMode;
+}
+
+export interface DepotSelectionDependencies {
+  detectChangedDepots: typeof detectChangedDepots;
+}
+
+function parseBooleanEnv(value: string | undefined): boolean {
+  return value !== undefined && /^(1|true|yes)$/i.test(value);
+}
+
+function resolveDepotFingerprintMode(options: PushOptions, env: NodeJS.ProcessEnv = process.env): DepotFingerprintMode {
+  if (options.contentHash || parseBooleanEnv(env.BOILER_CONTENT_HASH)) {
+    return 'content';
+  }
+  return 'metadata';
+}
+
 function pickDepotSnapshots(
   snapshots: Record<number, DepotStateRecord>,
   depots: DepotConfig[]
@@ -88,6 +110,74 @@ function pickDepotSnapshots(
     }
   }
   return selected;
+}
+
+export function resolveDepotSelectionForPush(
+  plan: PushPlan,
+  options: PushOptions,
+  deps: DepotSelectionDependencies = { detectChangedDepots },
+  env: NodeJS.ProcessEnv = process.env
+): DepotSelectionResult {
+  const fingerprintMode = resolveDepotFingerprintMode(options, env);
+  let workingPlan = plan;
+  let depotSnapshots: Record<number, DepotStateRecord> = {};
+
+  if (options.depot || options.allDepots) {
+    if (options.allDepots) {
+      logger.verbose('Skipping changed-depot detection because --all-depots is set.');
+    }
+    return {
+      plan: workingPlan,
+      depotSnapshots,
+      skipUpload: false,
+      fingerprintMode,
+    };
+  }
+
+  try {
+    if (fingerprintMode === 'content') {
+      logger.verbose('Changed-depot detection is using strict content hashing.');
+    }
+
+    const changeDetection = deps.detectChangedDepots(workingPlan.depots, workingPlan.outputDir, { mode: fingerprintMode });
+    depotSnapshots = changeDetection.snapshots;
+
+    if (changeDetection.unchangedDepotIds.length > 0) {
+      logger.debug(`Unchanged depots: ${changeDetection.unchangedDepotIds.join(', ')}`);
+    }
+
+    if (changeDetection.changedDepots.length === 0) {
+      if (workingPlan.setLive) {
+        logger.warn('No depot content changes detected, but SetLive is configured; forcing upload.');
+      } else {
+        logger.success('No depot content changes detected. Skipping upload.');
+        return {
+          plan: workingPlan,
+          depotSnapshots,
+          skipUpload: true,
+          fingerprintMode,
+        };
+      }
+    } else if (changeDetection.changedDepots.length < workingPlan.depots.length) {
+      const skipped = workingPlan.depots.length - changeDetection.changedDepots.length;
+      logger.info(`Detected ${changeDetection.changedDepots.length} changed depot(s); skipping ${skipped} unchanged depot(s).`);
+      workingPlan = {
+        ...workingPlan,
+        depots: changeDetection.changedDepots,
+      };
+    }
+  } catch (err) {
+    logger.warn('Unable to detect changed depots; uploading all configured depots.');
+    logger.debug(err instanceof Error ? err.stack ?? err.message : String(err));
+    depotSnapshots = {};
+  }
+
+  return {
+    plan: workingPlan,
+    depotSnapshots,
+    skipUpload: false,
+    fingerprintMode,
+  };
 }
 
 export function resolvePushDepots(
@@ -263,38 +353,11 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
     process.exit(1);
   }
 
-  let depotSnapshots: Record<number, DepotStateRecord> = {};
-  if (!options.depot && !options.allDepots) {
-    try {
-      const changeDetection = detectChangedDepots(plan.depots, plan.outputDir);
-      depotSnapshots = changeDetection.snapshots;
-
-      if (changeDetection.unchangedDepotIds.length > 0) {
-        logger.debug(`Unchanged depots: ${changeDetection.unchangedDepotIds.join(', ')}`);
-      }
-
-      if (changeDetection.changedDepots.length === 0) {
-        if (plan.setLive) {
-          logger.warn('No depot content changes detected, but SetLive is configured; forcing upload.');
-        } else {
-          logger.success('No depot content changes detected. Skipping upload.');
-          return;
-        }
-      } else if (changeDetection.changedDepots.length < plan.depots.length) {
-        const skipped = plan.depots.length - changeDetection.changedDepots.length;
-        logger.info(`Detected ${changeDetection.changedDepots.length} changed depot(s); skipping ${skipped} unchanged depot(s).`);
-        plan = {
-          ...plan,
-          depots: changeDetection.changedDepots,
-        };
-      }
-    } catch (err) {
-      logger.warn('Unable to detect changed depots; uploading all configured depots.');
-      logger.debug(err instanceof Error ? err.stack ?? err.message : String(err));
-      depotSnapshots = {};
-    }
-  } else if (options.allDepots) {
-    logger.verbose('Skipping changed-depot detection because --all-depots is set.');
+  const depotSelection = resolveDepotSelectionForPush(plan, options);
+  plan = depotSelection.plan;
+  const depotSnapshots = depotSelection.depotSnapshots;
+  if (depotSelection.skipUpload) {
+    return;
   }
 
   let prepared: PreparedDepots;
@@ -417,7 +480,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
       const snapshotsToPersist = Object.keys(depotSnapshots).length > 0
         ? pickDepotSnapshots(depotSnapshots, plan.depots)
         : Object.fromEntries(
-          plan.depots.map((depot) => [depot.depotId, computeDepotStateRecord(depot)])
+          plan.depots.map((depot) => [depot.depotId, computeDepotStateRecord(depot, { mode: depotSelection.fingerprintMode })])
         ) as Record<number, DepotStateRecord>;
       persistDepotStateSnapshots(plan.outputDir, snapshotsToPersist);
     } catch (err) {

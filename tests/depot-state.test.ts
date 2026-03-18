@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'fs';
+import { existsSync, mkdirSync, rmSync, utimesSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { computeDepotStateRecord, detectChangedDepots, loadDepotState, persistDepotStateSnapshots } from '../src/core/depot-state.js';
 import type { DepotConfig } from '../src/types/index.js';
@@ -40,6 +40,28 @@ describe('computeDepotStateRecord', () => {
     expect(snapshot.totalBytes).toBe(Buffer.byteLength('keep'));
     expect(snapshot.fingerprint).toMatch(/^[a-f0-9]{64}$/);
   });
+
+  it('can hash content bytes in strict mode', () => {
+    const contentDir = join(TEST_DIR, 'content-strict');
+    mkdirSync(contentDir, { recursive: true });
+    const filePath = join(contentDir, 'data.bin');
+    writeFileSync(filePath, 'ab', 'utf-8');
+    const fixedTime = new Date('2026-01-01T00:00:00.000Z');
+    utimesSync(filePath, fixedTime, fixedTime);
+
+    const depot = createDepot(999, contentDir);
+
+    const metadataSnapshotA = computeDepotStateRecord(depot, { mode: 'metadata' });
+    writeFileSync(filePath, 'cd', 'utf-8'); // same size, new bytes
+    utimesSync(filePath, fixedTime, fixedTime); // restore timestamps to keep metadata stable
+    const metadataSnapshotB = computeDepotStateRecord(depot, { mode: 'metadata' });
+    const contentSnapshotB = computeDepotStateRecord(depot, { mode: 'content' });
+
+    expect(metadataSnapshotA.fingerprint).toBe(metadataSnapshotB.fingerprint);
+    expect(metadataSnapshotA.mode).toBe('metadata');
+    expect(contentSnapshotB.mode).toBe('content');
+    expect(contentSnapshotB.fingerprint).not.toBe(metadataSnapshotB.fingerprint);
+  });
 });
 
 describe('detectChangedDepots', () => {
@@ -68,6 +90,7 @@ describe('detectChangedDepots', () => {
     const outputDir = join(TEST_DIR, 'output');
     persistDepotStateSnapshots(outputDir, {
       100: {
+        mode: 'metadata',
         fingerprint: 'a'.repeat(64),
         fileCount: 1,
         totalBytes: 10,
@@ -77,6 +100,7 @@ describe('detectChangedDepots', () => {
 
     persistDepotStateSnapshots(outputDir, {
       200: {
+        mode: 'metadata',
         fingerprint: 'b'.repeat(64),
         fileCount: 2,
         totalBytes: 20,

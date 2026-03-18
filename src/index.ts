@@ -56,6 +56,7 @@ program
   .option('--set-live <branch>', 'Set build live on branch after upload')
   .option('--dry-run', 'Preview generated VDF without uploading')
   .option('--all-depots', 'Upload all depots and skip automatic changed-depot detection')
+  .option('--content-hash', 'Use strict content hashing for changed-depot detection (slower)')
   .option('--skip-download', 'Fail if SteamCMD is missing instead of downloading it')
   .action(pushCommand);
 
