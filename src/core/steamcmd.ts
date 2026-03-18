@@ -127,6 +127,23 @@ export interface RunSteamCmdOptions {
   abortPattern?: RegExp;
 }
 
+export interface RetrySteamCmdOptions {
+  maxAttempts?: number;
+  initialDelayMs?: number;
+  backoffMultiplier?: number;
+  shouldRetry?: (result: SteamCmdResult) => boolean;
+  onRetry?: (context: SteamCmdRetryContext) => void;
+  sleep?: (ms: number) => Promise<void>;
+}
+
+export interface SteamCmdRetryContext {
+  attempt: number;
+  maxAttempts: number;
+  delayMs: number;
+  reason: string;
+  result: SteamCmdResult;
+}
+
 export interface CachedLoginProbeResult {
   status: 'valid' | 'missing' | 'rate_limited' | 'timeout' | 'unknown';
   message: string;
@@ -136,6 +153,13 @@ export interface CachedLoginProbeResult {
 const LOGGED_IN_RE = /Logged in OK|Waiting for user info\.\.\.OK|Login Success/i;
 const PASSWORD_PROMPT_RE = /password:/i;
 const STEAM_GUARD_PROMPT_RE = /Steam Guard|Two-factor|two factor|confirm the login in the Steam Mobile app|Waiting for confirmation|Steam Guard mobile authenticator/i;
+const RETRIABLE_STEAMCMD_ERRORS: Array<{ reason: string; pattern: RegExp }> = [
+  { reason: 'timeout', pattern: /timed out|timeout/i },
+  { reason: 'network error', pattern: /connection (?:timed out|reset|closed)|network error|failed to connect|unable to connect|temporary failure/i },
+  { reason: 'steam service unavailable', pattern: /content server.*unavailable|service unavailable|server is busy|try again later/i },
+  { reason: 'steam http error', pattern: /http.*\b(429|500|502|503|504)\b/i },
+  { reason: 'depot lock conflict', pattern: /depot.*locked|another build is in progress/i },
+];
 
 export interface StreamProcessState {
   buffered: string;
@@ -258,6 +282,87 @@ export function runSteamCmd(
       reject(err);
     });
   });
+}
+
+function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+export function getRetriableSteamCmdReason(output: string): string | null {
+  for (const rule of RETRIABLE_STEAMCMD_ERRORS) {
+    if (rule.pattern.test(output)) {
+      return rule.reason;
+    }
+  }
+
+  return null;
+}
+
+export function isRetriableSteamCmdOutput(output: string): boolean {
+  return getRetriableSteamCmdReason(output) !== null;
+}
+
+export function isRetriableSteamCmdResult(result: SteamCmdResult): boolean {
+  const output = result.stdout + result.stderr;
+
+  if (result.exitCode === 0 && !/timed out|timeout/i.test(output)) {
+    return false;
+  }
+
+  if (isLoginFailure(output) || needsSteamGuard(output) || isRateLimited(output)) {
+    return false;
+  }
+
+  return isRetriableSteamCmdOutput(output);
+}
+
+export async function retrySteamCmdExecution(
+  runAttempt: () => Promise<SteamCmdResult>,
+  options: RetrySteamCmdOptions = {}
+): Promise<SteamCmdResult> {
+  const maxAttempts = Math.max(1, options.maxAttempts ?? 3);
+  const initialDelayMs = Math.max(0, options.initialDelayMs ?? 1_000);
+  const backoffMultiplier = Math.max(1, options.backoffMultiplier ?? 2);
+  const shouldRetry = options.shouldRetry ?? isRetriableSteamCmdResult;
+  const sleep = options.sleep ?? wait;
+
+  let delayMs = initialDelayMs;
+  let lastResult: SteamCmdResult | null = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const result = await runAttempt();
+    lastResult = result;
+
+    if (attempt === maxAttempts || !shouldRetry(result)) {
+      return result;
+    }
+
+    const output = result.stdout + result.stderr;
+    options.onRetry?.({
+      attempt,
+      maxAttempts,
+      delayMs,
+      reason: getRetriableSteamCmdReason(output) ?? `exit code ${result.exitCode}`,
+      result,
+    });
+
+    await sleep(delayMs);
+    delayMs = Math.round(delayMs * backoffMultiplier);
+  }
+
+  return lastResult ?? { exitCode: 1, stdout: '', stderr: '' };
+}
+
+export async function runSteamCmdWithRetry(
+  steamcmdPath: string,
+  args: string[],
+  runOptions: RunSteamCmdOptions | ((line: string) => void) | undefined,
+  retryOptions: RetrySteamCmdOptions = {}
+): Promise<SteamCmdResult> {
+  return retrySteamCmdExecution(
+    () => runSteamCmd(steamcmdPath, args, runOptions),
+    retryOptions
+  );
 }
 
 export function parseBuildId(output: string): string | null {

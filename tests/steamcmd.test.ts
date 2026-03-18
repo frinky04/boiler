@@ -9,6 +9,9 @@ import {
   classifyCachedLoginProbe,
   processSteamCmdOutputChunk,
   flushSteamCmdOutputBuffer,
+  isRetriableSteamCmdOutput,
+  isRetriableSteamCmdResult,
+  retrySteamCmdExecution,
 } from '../src/core/steamcmd.js';
 
 describe('output parsing', () => {
@@ -109,5 +112,67 @@ describe('output parsing', () => {
     });
 
     expect(result.status).toBe('missing');
+  });
+
+  it('detects retriable SteamCMD output patterns', () => {
+    expect(isRetriableSteamCmdOutput('ERROR! Failed to connect to content server')).toBe(true);
+    expect(isRetriableSteamCmdOutput('HTTP 503 Service Unavailable')).toBe(true);
+    expect(isRetriableSteamCmdOutput('Login Failure: Invalid Password')).toBe(false);
+  });
+
+  it('does not retry login/auth failures', () => {
+    expect(isRetriableSteamCmdResult({
+      exitCode: 1,
+      stdout: '',
+      stderr: 'Login Failure: Invalid Password',
+    })).toBe(false);
+  });
+});
+
+describe('retrySteamCmdExecution', () => {
+  it('retries transient failures with exponential backoff', async () => {
+    const attempts = [
+      { exitCode: 1, stdout: '', stderr: '[boiler] SteamCMD timed out after 600s' },
+      { exitCode: 1, stdout: '', stderr: 'HTTP 503 Service Unavailable' },
+      { exitCode: 0, stdout: 'Successfully finished appID=480 (BuildID 12345)', stderr: '' },
+    ];
+    const sleepCalls: number[] = [];
+    let attemptIndex = 0;
+
+    const result = await retrySteamCmdExecution(
+      async () => attempts[attemptIndex++]!,
+      {
+        maxAttempts: 3,
+        initialDelayMs: 50,
+        backoffMultiplier: 2,
+        sleep: async (ms) => {
+          sleepCalls.push(ms);
+        },
+      }
+    );
+
+    expect(result.exitCode).toBe(0);
+    expect(attemptIndex).toBe(3);
+    expect(sleepCalls).toEqual([50, 100]);
+  });
+
+  it('stops retrying when output is not retriable', async () => {
+    let calls = 0;
+
+    const result = await retrySteamCmdExecution(async () => {
+      calls += 1;
+      return {
+        exitCode: 1,
+        stdout: '',
+        stderr: 'Invalid app build config file specified',
+      };
+    }, {
+      maxAttempts: 3,
+      initialDelayMs: 10,
+      sleep: async () => {},
+    });
+
+    expect(result.exitCode).toBe(1);
+    expect(calls).toBe(1);
   });
 });

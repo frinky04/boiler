@@ -7,8 +7,15 @@ function indent(level: number): string {
   return '\t'.repeat(level);
 }
 
+export function sanitizeVdfValue(value: string): string {
+  return value
+    .replace(/\u0000/g, '')
+    .replace(/[\r\n\t]+/g, ' ')
+    .replace(/"/g, '\\"');
+}
+
 function vdfKeyValue(key: string, value: string, level: number): string {
-  return `${indent(level)}"${key}"\t\t"${value}"`;
+  return `${indent(level)}"${sanitizeVdfValue(key)}"\t\t"${sanitizeVdfValue(value)}"`;
 }
 
 export function generateDepotBuildVdf(depot: DepotConfig): string {

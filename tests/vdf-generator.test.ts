@@ -61,6 +61,19 @@ describe('generateDepotBuildVdf', () => {
     expect(vdf).toContain('"LocalPath"\t\t"extras/*"');
     expect(vdf).toContain('"DepotPath"\t\t"./extras"');
   });
+
+  it('sanitizes quotes and control characters in depot paths', () => {
+    const depot: DepotConfig = {
+      depotId: 701,
+      contentRoot: './out',
+      fileMappings: [{ localPath: 'build/"main"\nfiles', depotPath: './live', recursive: true }],
+      fileExclusions: ['ignore\tthis'],
+    };
+
+    const vdf = generateDepotBuildVdf(depot);
+    expect(vdf).toContain('"LocalPath"\t\t"build/\\"main\\" files"');
+    expect(vdf).toContain('"FileExclusion"\t\t"ignore this"');
+  });
 });
 
 describe('generateAppBuildVdf', () => {
@@ -155,5 +168,27 @@ describe('generateAppBuildVdf', () => {
     const vdf = generateAppBuildVdf(config);
     expect(vdf).toContain('"481"\t\t"depot_build_481.vdf"');
     expect(vdf).toContain('"482"\t\t"depot_build_482.vdf"');
+  });
+
+  it('sanitizes string fields while preserving unicode text', () => {
+    const config: AppBuildVdfConfig = {
+      appId: 480,
+      description: 'Release "café"\nnightly',
+      contentRoot: '/build',
+      buildOutput: '/output',
+      setLive: 'beta\tbranch',
+      depots: [
+        {
+          depotId: 481,
+          contentRoot: './build',
+          fileMappings: [{ localPath: '*', depotPath: '.', recursive: true }],
+          fileExclusions: [],
+        },
+      ],
+    };
+
+    const vdf = generateAppBuildVdf(config);
+    expect(vdf).toContain('"Desc"\t\t"Release \\"café\\" nightly"');
+    expect(vdf).toContain('"SetLive"\t\t"beta branch"');
   });
 });

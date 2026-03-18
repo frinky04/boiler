@@ -1,6 +1,19 @@
-import { describe, it, expect } from 'vitest';
-import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush } from '../src/commands/push.js';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { mkdirSync, rmSync, existsSync } from 'fs';
+import { join } from 'path';
+import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush, runPrePushValidation } from '../src/commands/push.js';
 import type { DepotConfig, ProjectConfig, PushOptions } from '../src/types/index.js';
+
+const TEST_DIR = join(process.cwd(), '.test-push-tmp');
+
+beforeEach(() => {
+  if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+  mkdirSync(TEST_DIR, { recursive: true });
+});
+
+afterEach(() => {
+  if (existsSync(TEST_DIR)) rmSync(TEST_DIR, { recursive: true });
+});
 
 function createDepot(depotId: number, contentRoot: string, localPath: string = '*'): DepotConfig {
   return {
@@ -149,5 +162,41 @@ describe('resolveSteamCmdPathForPush', () => {
         ensureSteamCmd: async () => '/tmp/steamcmd',
       }
     )).resolves.toBe('/usr/bin/steamcmd');
+  });
+});
+
+describe('runPrePushValidation', () => {
+  it('reports missing content roots as errors', () => {
+    const result = runPrePushValidation(null, [
+      createDepot(481, join(TEST_DIR, 'missing-build')),
+    ]);
+
+    expect(result.errors).toHaveLength(1);
+    expect(result.errors[0]).toMatch(/Content folder not found/i);
+  });
+
+  it('reports empty content roots as warnings', () => {
+    const emptyDir = join(TEST_DIR, 'empty-build');
+    mkdirSync(emptyDir, { recursive: true });
+
+    const result = runPrePushValidation(null, [
+      createDepot(481, emptyDir),
+    ]);
+
+    expect(result.errors).toEqual([]);
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toMatch(/Content folder is empty/i);
+  });
+
+  it('includes config schema errors in the validation result', () => {
+    const invalidProject = {
+      appId: 0,
+      depots: [],
+      buildOutput: '',
+      setLive: null,
+    } as unknown as ProjectConfig;
+
+    const result = runPrePushValidation(invalidProject, []);
+    expect(result.errors.some((error) => error.includes('Config error:'))).toBe(true);
   });
 });

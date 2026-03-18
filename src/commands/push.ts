@@ -2,8 +2,9 @@ import { resolve, dirname, relative, isAbsolute } from 'path';
 import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
-import { ensureSteamCmd, findSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
+import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
+import { validateProjectConfig } from '../util/validation.js';
 import * as logger from '../util/logger.js';
 import type { PushOptions, AppBuildVdfConfig, DepotConfig, DepotFileMapping, LastPush, ProjectConfig } from '../types/index.js';
 
@@ -67,6 +68,11 @@ export interface PushPlan {
 export interface PushSteamCmdDependencies {
   ensureSteamCmd: typeof ensureSteamCmd;
   findSteamCmd: typeof findSteamCmd;
+}
+
+export interface PrePushValidationResult {
+  errors: string[];
+  warnings: string[];
 }
 
 export function resolvePushDepots(
@@ -176,9 +182,51 @@ export async function resolveSteamCmdPathForPush(
   return deps.ensureSteamCmd();
 }
 
+export function runPrePushValidation(projectConfig: ProjectConfig | null, depots: DepotConfig[]): PrePushValidationResult {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+  if (projectConfig) {
+    for (const issue of validateProjectConfig(projectConfig)) {
+      errors.push(`Config error: ${issue}`);
+    }
+  }
+
+  for (const depot of depots) {
+    const absPath = resolve(depot.contentRoot);
+    if (!existsSync(absPath)) {
+      errors.push(`Content folder not found: ${absPath}`);
+      continue;
+    }
+
+    try {
+      if (!statSync(absPath).isDirectory()) {
+        errors.push(`Content root is not a directory: ${absPath}`);
+        continue;
+      }
+
+      const files = readdirSync(absPath);
+      if (files.length === 0) {
+        warnings.push(`Content folder is empty: ${absPath}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      errors.push(`Unable to read content folder ${absPath}: ${message}`);
+    }
+  }
+
+  return { errors, warnings };
+}
+
 export async function pushCommand(folder: string | undefined, options: PushOptions): Promise<void> {
   // 1. Resolve config
-  const projectConfig = loadProjectConfig();
+  let projectConfig: ProjectConfig | null = null;
+  try {
+    projectConfig = loadProjectConfig();
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
 
   let plan: PushPlan;
   try {
@@ -188,29 +236,16 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
     process.exit(1);
   }
 
-  // 2. Validate content folders
-  for (const depot of plan.depots) {
-    const absPath = resolve(depot.contentRoot);
-    if (!existsSync(absPath)) {
-      logger.error(`Content folder not found: ${absPath}`);
-      process.exit(1);
+  // 2. Pre-push validation gate (config + filesystem checks)
+  const validation = runPrePushValidation(projectConfig, plan.depots);
+  for (const warning of validation.warnings) {
+    logger.warn(warning);
+  }
+  if (validation.errors.length > 0) {
+    for (const error of validation.errors) {
+      logger.error(error);
     }
-
-    try {
-      if (!statSync(absPath).isDirectory()) {
-        logger.error(`Content root is not a directory: ${absPath}`);
-        process.exit(1);
-      }
-
-      const files = readdirSync(absPath);
-      if (files.length === 0) {
-        logger.warn(`Content folder is empty: ${absPath}`);
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      logger.error(`Unable to read content folder ${absPath}: ${message}`);
-      process.exit(1);
-    }
+    process.exit(1);
   }
 
   let prepared: PreparedDepots;
@@ -269,7 +304,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   const spin = logger.spinner(`Uploading App ${plan.appId}...`);
   spin.start();
 
-  const result = await runSteamCmd(
+  const result = await runSteamCmdWithRetry(
     steamcmdPath,
     ['+login', username, '+run_app_build', appVdfPath, '+quit'],
     {
@@ -298,6 +333,17 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
         } else if (/Total size|Compressed size/i.test(line)) {
           logger.dim(`  ${line}`);
         }
+      },
+    },
+    {
+      maxAttempts: 3,
+      initialDelayMs: 2_000,
+      backoffMultiplier: 2,
+      onRetry: ({ attempt, maxAttempts, delayMs, reason }) => {
+        const nextAttempt = attempt + 1;
+        logger.warn(
+          `SteamCMD attempt ${attempt}/${maxAttempts} failed (${reason}). Retrying in ${Math.round(delayMs / 1000)}s (next attempt ${nextAttempt}/${maxAttempts}).`
+        );
       },
     }
   );
