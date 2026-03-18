@@ -21,6 +21,11 @@ const STEAM_GUARD_EMAIL_RE = /check your email|enter the Steam Guard code from t
 const STEAM_GUARD_MOBILE_APPROVAL_RE = /confirm the login in the Steam Mobile app|Waiting for confirmation|Steam Guard mobile authenticator/i;
 const STEAM_GUARD_MOBILE_CODE_RE = /Two-factor code|6-digit code/i;
 const STEAM_GUARD_ANY_RE = /Steam Guard|Two-factor|two factor|enter.*code|Waiting for confirmation|confirm the login/i;
+const MOBILE_APPROVAL_NUDGE_DELAY_MS = 4000;
+const MOBILE_APPROVAL_TEXT = 'Approve the login in the Steam Mobile app on your phone...';
+const MOBILE_APPROVAL_NUDGE_TEXT = 'Still waiting on Steam... check your phone if approval is required.';
+
+type MobileApprovalHintState = 'none' | 'nudge' | 'detected';
 
 function failLogin(username: string, message: string): LoginResult {
   return {
@@ -71,30 +76,80 @@ export async function login(steamcmdPath: string, options: LoginOptions = {}): P
 
   const spin = logger.spinner('Logging in to Steam...');
   spin.start();
-  let showedMobileApprovalHint = false;
+  let mobileApprovalHintState: MobileApprovalHintState = 'none';
+  let liveOutput = '';
+  let mobileApprovalNudgeTimer: ReturnType<typeof setTimeout> | undefined;
+
+  function showMobileApprovalHint(mode: 'detected' | 'nudge'): void {
+    if (mode === 'detected' && mobileApprovalHintState === 'detected') {
+      return;
+    }
+
+    if (mode === 'detected') {
+      const previousState = mobileApprovalHintState;
+      mobileApprovalHintState = 'detected';
+      spin.text = MOBILE_APPROVAL_TEXT;
+      if (previousState !== 'nudge') {
+        logger.info('Steam is waiting for approval in the Steam Mobile app.');
+        logger.dim('  Open Steam on your phone and approve the login request.');
+      }
+      return;
+    }
+
+    if (mobileApprovalHintState !== 'none') {
+      return;
+    }
+
+    mobileApprovalHintState = 'nudge';
+    spin.text = MOBILE_APPROVAL_NUDGE_TEXT;
+    logger.info('Still waiting on Steam.');
+    logger.dim('  If this account uses Steam Guard Mobile Authenticator, open Steam on your phone and approve the login request.');
+  }
+
+  function clearMobileApprovalNudge(): void {
+    if (mobileApprovalNudgeTimer) {
+      clearTimeout(mobileApprovalNudgeTimer);
+      mobileApprovalNudgeTimer = undefined;
+    }
+  }
+
+  function updateLoginProgress(text: string): void {
+    if (STEAM_GUARD_MOBILE_APPROVAL_RE.test(text)) {
+      clearMobileApprovalNudge();
+      showMobileApprovalHint('detected');
+      return;
+    }
+
+    if (/Logging in user/i.test(text)) {
+      spin.text = 'Logging in — if prompted, approve the login on your Steam mobile app...';
+      return;
+    }
+
+    if (/update|download|install|extract|verify/i.test(text)) {
+      spin.text = text.length > 60 ? text.slice(0, 60) + '...' : text;
+    }
+  }
 
   // Attempt login. SteamCMD will exit when it needs a Steam Guard code
   // because we close stdin. We detect the type of code needed from the output.
+  mobileApprovalNudgeTimer = setTimeout(() => {
+    showMobileApprovalHint('nudge');
+  }, MOBILE_APPROVAL_NUDGE_DELAY_MS);
+
   let result = await runSteamCmd(steamcmdPath, [
     '+login', username, password,
     '+quit',
   ], {
     timeoutMs: 300_000,
+    onRawOutput: (chunk) => {
+      liveOutput = (liveOutput + chunk).slice(-4000);
+      updateLoginProgress(liveOutput);
+    },
     onOutput: (line) => {
-      if (/update|download|install|extract|verify/i.test(line)) {
-        spin.text = line.length > 60 ? line.slice(0, 60) + '...' : line;
-      } else if (STEAM_GUARD_MOBILE_APPROVAL_RE.test(line)) {
-        spin.text = 'Approve the login in the Steam Mobile app on your phone...';
-        if (!showedMobileApprovalHint) {
-          logger.info('Steam is waiting for approval in the Steam Mobile app.');
-          logger.dim('  Open Steam on your phone and approve the login request.');
-          showedMobileApprovalHint = true;
-        }
-      } else if (/Logging in user/i.test(line)) {
-        spin.text = 'Logging in — if prompted, approve the login on your Steam mobile app...';
-      }
+      updateLoginProgress(line);
     },
   });
+  clearMobileApprovalNudge();
 
   let combined = result.stdout + result.stderr;
   let loginSucceeded = isSuccessfulLogin(combined) || result.exitCode === 0;

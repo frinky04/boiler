@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const promptMock = vi.fn();
 const runSteamCmdMock = vi.fn();
@@ -55,6 +55,10 @@ describe('login', () => {
     spinnerState.succeed.mockReset();
     spinnerState.text = '';
     loadGlobalConfigMock.mockReturnValue({ username: 'saved-user' });
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('fails without prompting when password is missing in non-interactive mode', async () => {
@@ -123,9 +127,9 @@ describe('login', () => {
 
   it('tells the user to approve the login in the Steam Mobile app', async () => {
     runSteamCmdMock.mockImplementationOnce(async (_steamcmdPath, _args, options) => {
-      options?.onOutput?.('This account is protected by a Steam Guard mobile authenticator.');
-      options?.onOutput?.('Please confirm the login in the Steam Mobile app on your phone.');
-      options?.onOutput?.('Waiting for confirmation...');
+      options?.onRawOutput?.('This account is protected by a Steam Guard mobile authenticator.');
+      options?.onRawOutput?.(' Please confirm the login in the Steam Mobile app on your phone.');
+      options?.onRawOutput?.(' Waiting for confirmation...');
 
       return {
         exitCode: 1,
@@ -150,6 +154,75 @@ describe('login', () => {
     expect(loggerInfoMock).toHaveBeenCalledWith('Steam is waiting for approval in the Steam Mobile app.');
     expect(loggerDimMock).toHaveBeenCalledWith('  Open Steam on your phone and approve the login request.');
     expect(spinnerState.fail).toHaveBeenCalledWith('Login approval timed out');
+    expect(spinnerState.text).toBe('Approve the login in the Steam Mobile app on your phone...');
+  });
+
+  it('shows a fallback nudge if Steam stays quiet for a few seconds', async () => {
+    vi.useFakeTimers();
+
+    runSteamCmdMock.mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      return {
+        exitCode: 0,
+        stdout: 'Logged in OK',
+        stderr: '',
+      };
+    });
+
+    const loginPromise = login('/tmp/steamcmd', {
+      username: 'ci-user',
+      password: 'ci-password',
+    });
+
+    await vi.advanceTimersByTimeAsync(4000);
+
+    expect(loggerInfoMock).toHaveBeenCalledWith('Still waiting on Steam.');
+    expect(loggerDimMock).toHaveBeenCalledWith(
+      '  If this account uses Steam Guard Mobile Authenticator, open Steam on your phone and approve the login request.'
+    );
+    expect(spinnerState.text).toBe('Still waiting on Steam... check your phone if approval is required.');
+
+    await vi.advanceTimersByTimeAsync(1000);
+
+    const result = await loginPromise;
+    expect(result.success).toBe(true);
+  });
+
+  it('upgrades the fallback nudge to the explicit mobile approval prompt when Steam finally says so', async () => {
+    vi.useFakeTimers();
+
+    runSteamCmdMock.mockImplementationOnce(async (_steamcmdPath, _args, options) => {
+      await new Promise((resolve) => setTimeout(resolve, 5000));
+      options?.onRawOutput?.('This account is protected by a Steam Guard mobile authenticator.');
+      options?.onRawOutput?.(' Please confirm the login in the Steam Mobile app on your phone.');
+      options?.onRawOutput?.(' Waiting for confirmation...');
+
+      return {
+        exitCode: 1,
+        stdout: [
+          'This account is protected by a Steam Guard mobile authenticator.',
+          'Please confirm the login in the Steam Mobile app on your phone.',
+          'Waiting for confirmation...',
+          'timed out waiting for input: 300.00 seconds',
+        ].join('\n'),
+        stderr: '',
+      };
+    });
+
+    const loginPromise = login('/tmp/steamcmd', {
+      username: 'ci-user',
+      password: 'ci-password',
+    });
+
+    await vi.advanceTimersByTimeAsync(4000);
+    expect(spinnerState.text).toBe('Still waiting on Steam... check your phone if approval is required.');
+
+    await vi.advanceTimersByTimeAsync(1000);
+    const result = await loginPromise;
+
+    expect(result.success).toBe(false);
+    expect(spinnerState.text).toBe('Approve the login in the Steam Mobile app on your phone...');
+    expect(loggerInfoMock).toHaveBeenCalledTimes(1);
   });
 
   it('does not ask for a Steam Guard code when phone approval is still pending', async () => {
@@ -178,9 +251,9 @@ describe('login', () => {
 
   it('succeeds when mobile approval messages appear before the final login success output', async () => {
     runSteamCmdMock.mockImplementationOnce(async (_steamcmdPath, _args, options) => {
-      options?.onOutput?.('This account is protected by a Steam Guard mobile authenticator.');
-      options?.onOutput?.('Please confirm the login in the Steam Mobile app on your phone.');
-      options?.onOutput?.('Waiting for confirmation...');
+      options?.onRawOutput?.('This account is protected by a Steam Guard mobile authenticator.');
+      options?.onRawOutput?.(' Please confirm the login in the Steam Mobile app on your phone.');
+      options?.onRawOutput?.(' Waiting for confirmation...');
       options?.onOutput?.('Waiting for user info...OK');
 
       return {

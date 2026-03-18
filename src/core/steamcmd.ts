@@ -121,6 +121,7 @@ export interface RunAppBuildOptions {
 
 export interface RunSteamCmdOptions {
   onOutput?: (line: string) => void;
+  onRawOutput?: (chunk: string) => void;
   timeoutMs?: number;
   /** Kill the process early if a line matches this pattern */
   abortPattern?: RegExp;
@@ -218,6 +219,7 @@ export function runSteamCmd(
     proc.stdout.on('data', (data: Buffer) => {
       const text = data.toString();
       stdout += text;
+      opts.onRawOutput?.(text);
       stdoutState = processSteamCmdOutputChunk(text, stdoutState, opts);
       if (!aborted && stdoutState.aborted) {
         aborted = true;
@@ -228,6 +230,7 @@ export function runSteamCmd(
     proc.stderr.on('data', (data: Buffer) => {
       const text = data.toString();
       stderr += text;
+      opts.onRawOutput?.(text);
       stderrState = processSteamCmdOutputChunk(text, stderrState, opts);
       if (!aborted && stderrState.aborted) {
         aborted = true;
