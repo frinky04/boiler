@@ -48,8 +48,8 @@ For automation, `login` also supports `--username`, `--password-env <var>`, `--g
 
 ### `easy-steam init`
 
-Interactive wizard that creates a `.easy-steam.json` config in your project root. Prompts for your App ID, Depot ID(s), content folder, and file exclusions.
-Each depot starts with one default file mapping, and you can extend the config manually if you need more than one mapping per depot.
+Interactive wizard that creates a `.easy-steam.json` config in your project root. Prompts for your App ID, Depot ID(s), content folder, file exclusions, and file mappings.
+Each depot starts with one sensible default mapping, but the wizard can also add multiple custom mappings for the same depot.
 
 ```bash
 easy-steam init
@@ -97,10 +97,13 @@ easy-steam push --skip-download
 
 ### `easy-steam status`
 
-Show current project config, build output directory, SteamCMD path, saved username, and last upload info.
+Show current project config, per-depot file mapping details, build output/artifact paths, SteamCMD path, saved username, cached login status, and last upload info.
 
 ```bash
 easy-steam status
+
+# Machine-readable report
+easy-steam status --json
 ```
 
 ### `easy-steam doctor`
@@ -154,7 +157,7 @@ Global config (username, SteamCMD path) is stored in `~/.easy-steam/config.json`
 
 `buildOutput` is the directory used for generated VDF/log artifacts, and `setLive` is used by default when running `push` unless you override it with `--set-live`.
 
-If a depot needs more than one Steam `FileMapping`, add multiple entries to `fileMappings`:
+If a depot needs more than one Steam `FileMapping`, the init wizard can add them for you, or you can edit `fileMappings` manually:
 
 ```json
 {

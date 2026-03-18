@@ -44,6 +44,7 @@ program
 program
   .command('status')
   .description('Show current config and last upload info')
+  .option('--json', 'Print a machine-readable report')
   .action(statusCommand);
 
 program
