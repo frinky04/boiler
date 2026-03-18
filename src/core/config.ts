@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
-import { join } from 'path';
+import { join, resolve } from 'path';
 import { homedir } from 'os';
 import type { ProjectConfig, GlobalConfig, LastPush } from '../types/index.js';
 
@@ -13,7 +13,11 @@ export function getProjectConfigPath(cwd: string = process.cwd()): string {
 }
 
 export function getOutputDir(cwd: string = process.cwd()): string {
-  return join(cwd, OUTPUT_DIR);
+  return resolve(cwd, OUTPUT_DIR);
+}
+
+export function resolveBuildOutputDir(buildOutput: string | null | undefined, cwd: string = process.cwd()): string {
+  return resolve(cwd, buildOutput ?? OUTPUT_DIR);
 }
 
 export function projectConfigExists(cwd: string = process.cwd()): boolean {
@@ -71,14 +75,13 @@ export function getGlobalDir(): string {
   return GLOBAL_DIR;
 }
 
-export function saveLastPush(data: LastPush, cwd: string = process.cwd()): void {
-  const dir = getOutputDir(cwd);
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'last-push.json'), JSON.stringify(data, null, 2) + '\n', 'utf-8');
+export function saveLastPush(data: LastPush, outputDir: string = getOutputDir()): void {
+  if (!existsSync(outputDir)) mkdirSync(outputDir, { recursive: true });
+  writeFileSync(join(outputDir, 'last-push.json'), JSON.stringify(data, null, 2) + '\n', 'utf-8');
 }
 
-export function loadLastPush(cwd: string = process.cwd()): LastPush | null {
-  const path = join(getOutputDir(cwd), 'last-push.json');
+export function loadLastPush(outputDir: string = getOutputDir()): LastPush | null {
+  const path = join(outputDir, 'last-push.json');
   if (!existsSync(path)) return null;
   return parseJsonFile<LastPush>(path);
 }

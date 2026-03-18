@@ -4,8 +4,9 @@ import { loginCommand } from '../commands/login.js';
 import { initCommand } from '../commands/init.js';
 import { pushCommand } from '../commands/push.js';
 import { statusCommand } from '../commands/status.js';
+import { doctorCommand } from '../commands/doctor.js';
 
-type Action = 'login' | 'init' | 'push' | 'status' | 'exit';
+type Action = 'login' | 'init' | 'push' | 'status' | 'doctor' | 'exit';
 
 export async function interactiveWizard(): Promise<void> {
   logger.banner();
@@ -21,6 +22,7 @@ export async function interactiveWizard(): Promise<void> {
           { name: 'Init project config', value: 'init' },
           { name: 'Push a build', value: 'push' },
           { name: 'Check status', value: 'status' },
+          { name: 'Run doctor checks', value: 'doctor' },
           new inquirer.Separator(),
           { name: 'Exit', value: 'exit' },
         ],
@@ -44,6 +46,9 @@ export async function interactiveWizard(): Promise<void> {
           break;
         case 'status':
           await statusCommand();
+          break;
+        case 'doctor':
+          await doctorCommand();
           break;
       }
     } catch (err) {

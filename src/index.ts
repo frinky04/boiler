@@ -5,6 +5,7 @@ import { initCommand } from './commands/init.js';
 import { loginCommand } from './commands/login.js';
 import { pushCommand } from './commands/push.js';
 import { statusCommand } from './commands/status.js';
+import { doctorCommand } from './commands/doctor.js';
 import { interactiveWizard } from './wizard/interactive.js';
 import * as logger from './util/logger.js';
 
@@ -39,6 +40,11 @@ program
   .command('status')
   .description('Show current config and last upload info')
   .action(statusCommand);
+
+program
+  .command('doctor')
+  .description('Run preflight checks for config, auth, and SteamCMD')
+  .action(doctorCommand);
 
 // No subcommand → interactive wizard
 if (process.argv.length <= 2) {

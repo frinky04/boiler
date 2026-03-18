@@ -1,9 +1,9 @@
-import { spawn, type ChildProcess } from 'child_process';
+import { spawn } from 'child_process';
 import { existsSync, mkdirSync, createWriteStream } from 'fs';
 import { join } from 'path';
 import { pipeline } from 'stream/promises';
 import which from 'which';
-import { steamcmdBinary, commonSteamcmdLocations, steamcmdDownloadUrl, isWindows } from '../util/platform.js';
+import { steamcmdBinary, commonSteamcmdLocations, steamcmdDownloadUrl } from '../util/platform.js';
 import { loadGlobalConfig, updateGlobalConfig, getGlobalDir } from './config.js';
 import * as logger from '../util/logger.js';
 
@@ -126,6 +126,15 @@ export interface RunSteamCmdOptions {
   abortPattern?: RegExp;
 }
 
+export interface CachedLoginProbeResult {
+  status: 'valid' | 'missing' | 'rate_limited' | 'timeout' | 'unknown';
+  message: string;
+  output: string;
+}
+
+const LOGGED_IN_RE = /Logged in OK|Waiting for user info\.\.\.OK|Login Success/i;
+const PASSWORD_PROMPT_RE = /password:/i;
+
 export function runSteamCmd(
   steamcmdPath: string,
   args: string[],
@@ -222,4 +231,59 @@ export function needsSteamGuard(output: string): boolean {
 
 export function isSuccessfulBuild(output: string): boolean {
   return /Successfully finished/i.test(output);
+}
+
+export function classifyCachedLoginProbe(result: SteamCmdResult): CachedLoginProbeResult {
+  const output = result.stdout + result.stderr;
+
+  if (LOGGED_IN_RE.test(output)) {
+    return {
+      status: 'valid',
+      message: 'Cached Steam login is valid.',
+      output,
+    };
+  }
+
+  if (isRateLimited(output)) {
+    return {
+      status: 'rate_limited',
+      message: 'Steam is rate limiting login checks right now.',
+      output,
+    };
+  }
+
+  if (output.includes('timed out')) {
+    return {
+      status: 'timeout',
+      message: 'SteamCMD timed out while checking cached login.',
+      output,
+    };
+  }
+
+  if (needsSteamGuard(output) || isLoginFailure(output) || PASSWORD_PROMPT_RE.test(output)) {
+    return {
+      status: 'missing',
+      message: 'Cached Steam login is missing or expired. Run `easy-steam login` again.',
+      output,
+    };
+  }
+
+  return {
+    status: 'unknown',
+    message: `SteamCMD returned exit code ${result.exitCode} without a clear login result.`,
+    output,
+  };
+}
+
+export async function probeCachedLogin(steamcmdPath: string, username: string): Promise<CachedLoginProbeResult> {
+  const result = await runSteamCmd(
+    steamcmdPath,
+    ['+login', username, '+quit'],
+    {
+      timeoutMs: 120_000,
+      abortPattern: /Steam Guard|Two-factor|two factor|password:/i,
+    }
+  );
+
+  return classifyCachedLoginProbe(result);
 }

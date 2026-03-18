@@ -1,11 +1,11 @@
 import { resolve, dirname, relative, isAbsolute } from 'path';
 import { existsSync, readdirSync, statSync } from 'fs';
-import { loadProjectConfig, getOutputDir, saveLastPush } from '../core/config.js';
+import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
 import { ensureSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import * as logger from '../util/logger.js';
-import type { PushOptions, AppBuildVdfConfig, DepotConfig, LastPush } from '../types/index.js';
+import type { PushOptions, AppBuildVdfConfig, DepotConfig, LastPush, ProjectConfig } from '../types/index.js';
 
 function isPathWithin(parent: string, child: string): boolean {
   const rel = relative(parent, child);
@@ -56,6 +56,41 @@ export interface PreparedDepots {
   depots: DepotConfig[];
 }
 
+export function resolvePushDepots(
+  folder: string | undefined,
+  options: PushOptions,
+  projectConfig: ProjectConfig | null
+): DepotConfig[] {
+  if (options.depot) {
+    if (!folder) {
+      throw new Error('`--depot` requires a folder argument for a one-off upload.');
+    }
+
+    return [{
+      depotId: options.depot,
+      contentRoot: folder,
+      fileMapping: { localPath: '*', depotPath: '.', recursive: true },
+      fileExclusions: [],
+    }];
+  }
+
+  if (!projectConfig?.depots?.length) {
+    throw new Error('No depot config. Run `easy-steam init` or pass --depot <id> with a folder.');
+  }
+
+  if (!folder) {
+    return projectConfig.depots;
+  }
+
+  if (projectConfig.depots.length > 1) {
+    throw new Error(
+      'Folder override is only supported for single-depot projects. Update `.easy-steam.json` or run a one-off upload with `easy-steam push <folder> --app <id> --depot <id>`.'
+    );
+  }
+
+  return projectConfig.depots.map((depot) => ({ ...depot, contentRoot: folder }));
+}
+
 export function prepareDepotsForVdf(depots: DepotConfig[]): PreparedDepots {
   if (depots.length === 0) {
     throw new Error('No depots configured for upload.');
@@ -102,20 +137,10 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   }
 
   let depots: DepotConfig[];
-  if (options.depot && folder) {
-    depots = [{
-      depotId: options.depot,
-      contentRoot: folder,
-      fileMapping: { localPath: '*', depotPath: '.', recursive: true },
-      fileExclusions: [],
-    }];
-  } else if (projectConfig?.depots) {
-    depots = projectConfig.depots;
-    if (folder) {
-      depots = depots.map((d) => ({ ...d, contentRoot: folder }));
-    }
-  } else {
-    logger.error('No depot config. Run `easy-steam init` or pass --depot <id> with a folder.');
+  try {
+    depots = resolvePushDepots(folder, options, projectConfig);
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   }
 
@@ -145,7 +170,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   }
 
   const description = options.desc?.trim() || `build ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`;
-  const outputDir = resolve(projectConfig?.buildOutput ?? getOutputDir());
+  const outputDir = resolveBuildOutputDir(projectConfig?.buildOutput);
 
   let prepared: PreparedDepots;
   try {
@@ -245,21 +270,21 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
 
   if (isSuccessfulBuild(combined)) {
     lastPush.success = true;
-    saveLastPush(lastPush);
+    saveLastPush(lastPush, outputDir);
     spin.succeed(`Build uploaded successfully!${buildId ? ` BuildID: ${buildId}` : ''}`);
     logger.dim('  Set it live in the Steamworks dashboard or use --set-live <branch>.');
   } else if (isRateLimited(combined)) {
-    saveLastPush(lastPush);
+    saveLastPush(lastPush, outputDir);
     spin.fail('Rate limited by Steam');
     logger.error('Too many login attempts. Wait 15-30 minutes before trying again.');
     process.exit(1);
   } else if (isLoginFailure(combined)) {
-    saveLastPush(lastPush);
+    saveLastPush(lastPush, outputDir);
     spin.fail('Upload failed — login error');
     logger.error('Your cached credentials may have expired. Run `easy-steam login` again.');
     process.exit(1);
   } else {
-    saveLastPush(lastPush);
+    saveLastPush(lastPush, outputDir);
     spin.fail(`Upload failed (exit code ${result.exitCode})`);
     // Save full log for debugging
     const logPath = resolve(outputDir, 'last-error.log');

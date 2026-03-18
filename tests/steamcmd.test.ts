@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { parseBuildId, parseUploadProgress, isLoginFailure, needsSteamGuard, isSuccessfulBuild } from '../src/core/steamcmd.js';
+import { parseBuildId, parseUploadProgress, isLoginFailure, needsSteamGuard, isSuccessfulBuild, classifyCachedLoginProbe } from '../src/core/steamcmd.js';
 
 describe('output parsing', () => {
   it('parses BuildID from success output', () => {
@@ -29,5 +29,25 @@ describe('output parsing', () => {
   it('detects successful builds', () => {
     expect(isSuccessfulBuild('Successfully finished appID=480')).toBe(true);
     expect(isSuccessfulBuild('ERROR! Build failed')).toBe(false);
+  });
+
+  it('classifies a valid cached login check', () => {
+    const result = classifyCachedLoginProbe({
+      exitCode: 0,
+      stdout: 'Logging in user foo\nLogged in OK\nWaiting for user info...OK',
+      stderr: '',
+    });
+
+    expect(result.status).toBe('valid');
+  });
+
+  it('classifies an expired cached login check', () => {
+    const result = classifyCachedLoginProbe({
+      exitCode: 1,
+      stdout: 'Logging in user foo',
+      stderr: 'Password: ',
+    });
+
+    expect(result.status).toBe('missing');
   });
 });

@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
-import { saveProjectConfig, loadProjectConfig, projectConfigExists } from '../src/core/config.js';
-import type { ProjectConfig } from '../src/types/index.js';
+import { saveProjectConfig, loadProjectConfig, projectConfigExists, resolveBuildOutputDir, saveLastPush, loadLastPush } from '../src/core/config.js';
+import type { LastPush, ProjectConfig } from '../src/types/index.js';
 
 const TEST_DIR = join(process.cwd(), '.test-config-tmp');
 
@@ -62,5 +62,24 @@ describe('project config', () => {
     const configPath = join(TEST_DIR, '.easy-steam.json');
     writeFileSync(configPath, '{ invalid json', 'utf-8');
     expect(() => loadProjectConfig(TEST_DIR)).toThrow(/Invalid JSON/);
+  });
+
+  it('resolves custom build output relative to the project directory', () => {
+    expect(resolveBuildOutputDir('.artifacts/steam', TEST_DIR)).toBe(join(TEST_DIR, '.artifacts/steam'));
+  });
+
+  it('saves and loads last push data from a custom output directory', () => {
+    const outputDir = join(TEST_DIR, '.artifacts/steam');
+    const lastPush: LastPush = {
+      timestamp: '2026-03-19T00:00:00.000Z',
+      buildId: '12345',
+      description: 'test build',
+      appId: 480,
+      success: true,
+    };
+
+    saveLastPush(lastPush, outputDir);
+
+    expect(loadLastPush(outputDir)).toEqual(lastPush);
   });
 });
