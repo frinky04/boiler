@@ -1,0 +1,44 @@
+{
+  "name": "easy-steam",
+  "version": "0.1.0",
+  "description": "Butler-like CLI for uploading builds to Steam via SteamCMD",
+  "type": "module",
+  "bin": {
+    "easy-steam": "./bin/easy-steam.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "keywords": [
+    "steam",
+    "steamcmd",
+    "steamworks",
+    "upload",
+    "cli",
+    "gamedev"
+  ],
+  "author": "",
+  "license": "MIT",
+  "files": [
+    "dist",
+    "bin"
+  ],
+  "dependencies": {
+    "chalk": "^5.6.2",
+    "commander": "^14.0.3",
+    "conf": "^15.1.0",
+    "inquirer": "^13.3.2",
+    "ora": "^9.3.0",
+    "which": "^6.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@types/which": "^3.0.4",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}
