@@ -37,7 +37,14 @@ Authenticate with your Steam account. Handles Steam Guard codes interactively. C
 
 ```bash
 easy-steam login
+
+# Non-interactive login for CI
+EASY_STEAM_USERNAME=buildbot \
+EASY_STEAM_PASSWORD=super-secret \
+easy-steam login --non-interactive
 ```
+
+For automation, `login` also supports `--username`, `--password-env <var>`, `--guard-code-env <var>`, and the environment variables `EASY_STEAM_USERNAME`, `EASY_STEAM_PASSWORD`, `EASY_STEAM_GUARD_CODE`, and `EASY_STEAM_NON_INTERACTIVE=1`.
 
 ### `easy-steam init`
 

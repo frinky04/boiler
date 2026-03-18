@@ -19,6 +19,10 @@ program
 program
   .command('login')
   .description('Authenticate with Steam (handles Steam Guard)')
+  .option('--username <name>', 'Steam username')
+  .option('--password-env <var>', 'Read the Steam password from an environment variable')
+  .option('--guard-code-env <var>', 'Read the Steam Guard code from an environment variable')
+  .option('--non-interactive', 'Fail instead of prompting for missing credentials or codes')
   .action(loginCommand);
 
 program

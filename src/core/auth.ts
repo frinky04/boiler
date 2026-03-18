@@ -9,36 +9,65 @@ export interface LoginResult {
   message: string;
 }
 
+export interface LoginOptions {
+  username?: string;
+  password?: string;
+  guardCode?: string;
+  nonInteractive?: boolean;
+}
+
 // SteamCMD auth prompt patterns
 const STEAM_GUARD_EMAIL_RE = /check your email|enter the Steam Guard code from that message/i;
 const STEAM_GUARD_MOBILE_RE = /Mobile Authenticator|Two-factor code/i;
 const STEAM_GUARD_ANY_RE = /Steam Guard|Two-factor|two factor|enter.*code/i;
 const LOGGED_IN_RE = /Logged in OK|logged in|Login Success/i;
 
-export async function login(steamcmdPath: string, username?: string): Promise<LoginResult> {
+function failLogin(username: string, message: string): LoginResult {
+  return {
+    success: false,
+    username,
+    message,
+  };
+}
+
+export async function login(steamcmdPath: string, options: LoginOptions = {}): Promise<LoginResult> {
+  const savedUsername = loadGlobalConfig().username;
+  let username = options.username?.trim() || savedUsername || undefined;
+
   if (!username) {
-    const saved = loadGlobalConfig().username;
+    if (options.nonInteractive) {
+      return failLogin('', 'Steam username is required in non-interactive mode. Pass `--username` or set `EASY_STEAM_USERNAME`.');
+    }
+
     const answers = await inquirer.prompt([
       {
         type: 'input',
         name: 'username',
         message: 'Steam username:',
-        default: saved ?? undefined,
+        default: savedUsername ?? undefined,
         validate: (v: string) => v.length > 0 || 'Username is required',
       },
     ]);
-    username = answers.username as string;
+    username = (answers.username as string).trim();
   }
 
-  const { password } = await inquirer.prompt([
-    {
-      type: 'password',
-      name: 'password',
-      message: 'Steam password:',
-      mask: '*',
-      validate: (v: string) => v.length > 0 || 'Password is required',
-    },
-  ]);
+  let password = options.password;
+  if (!password) {
+    if (options.nonInteractive) {
+      return failLogin(username, 'Steam password is required in non-interactive mode. Use `--password-env` or set `EASY_STEAM_PASSWORD`.');
+    }
+
+    const answers = await inquirer.prompt([
+      {
+        type: 'password',
+        name: 'password',
+        message: 'Steam password:',
+        mask: '*',
+        validate: (v: string) => v.length > 0 || 'Password is required',
+      },
+    ]);
+    password = answers.password as string;
+  }
 
   const spin = logger.spinner('Logging in to Steam...');
   spin.start();
@@ -75,14 +104,26 @@ export async function login(steamcmdPath: string, username?: string): Promise<Lo
       logger.info('Steam Guard code required. Check your email for the code.');
     }
 
-    const { guardCode } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'guardCode',
-        message: isMobileAuth ? 'Steam Guard code (from app):' : 'Steam Guard code (from email):',
-        validate: (v: string) => v.length > 0 || 'Code is required',
-      },
-    ]);
+    let guardCode = options.guardCode?.trim();
+    if (!guardCode) {
+      if (options.nonInteractive) {
+        spin.fail('Steam Guard code required');
+        return failLogin(
+          username,
+          'Steam Guard code is required in non-interactive mode. Use `--guard-code-env` or set `EASY_STEAM_GUARD_CODE`.'
+        );
+      }
+
+      const answers = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'guardCode',
+          message: isMobileAuth ? 'Steam Guard code (from app):' : 'Steam Guard code (from email):',
+          validate: (v: string) => v.length > 0 || 'Code is required',
+        },
+      ]);
+      guardCode = (answers.guardCode as string).trim();
+    }
 
     spin.start('Logging in with Steam Guard code...');
     result = await runSteamCmd(steamcmdPath, [
@@ -95,20 +136,12 @@ export async function login(steamcmdPath: string, username?: string): Promise<Lo
 
   if (isRateLimited(combined)) {
     spin.fail('Rate limited by Steam');
-    return {
-      success: false,
-      username,
-      message: 'Too many login attempts. Wait 15-30 minutes before trying again.',
-    };
+    return failLogin(username, 'Too many login attempts. Wait 15-30 minutes before trying again.');
   }
 
   if (isLoginFailure(combined)) {
     spin.fail('Login failed');
-    return {
-      success: false,
-      username,
-      message: 'Invalid credentials or incorrect Steam Guard code. Please try again.',
-    };
+    return failLogin(username, 'Invalid credentials or incorrect Steam Guard code. Please try again.');
   }
 
   if (LOGGED_IN_RE.test(combined) || result.exitCode === 0) {
@@ -120,18 +153,10 @@ export async function login(steamcmdPath: string, username?: string): Promise<Lo
 
   spin.fail('Login failed');
   if (combined.includes('timed out')) {
-    return {
-      success: false,
-      username,
-      message: 'SteamCMD timed out. It may still be updating — try again.',
-    };
+    return failLogin(username, 'SteamCMD timed out. It may still be updating — try again.');
   }
 
-  return {
-    success: false,
-    username,
-    message: `Unexpected SteamCMD output (exit code ${result.exitCode}). Run SteamCMD manually to debug.`,
-  };
+  return failLogin(username, `Unexpected SteamCMD output (exit code ${result.exitCode}). Run SteamCMD manually to debug.`);
 }
 
 export function isLoggedIn(): boolean {
