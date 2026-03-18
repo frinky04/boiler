@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { mkdirSync, rmSync, existsSync, readFileSync } from 'fs';
+import { mkdirSync, rmSync, existsSync, readFileSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { saveProjectConfig, loadProjectConfig, projectConfigExists } from '../src/core/config.js';
 import type { ProjectConfig } from '../src/types/index.js';
@@ -56,5 +56,11 @@ describe('project config', () => {
     const parsed = JSON.parse(raw);
     expect(parsed.appId).toBe(12345);
     expect(parsed.setLive).toBe('beta');
+  });
+
+  it('throws a readable error for malformed project config JSON', () => {
+    const configPath = join(TEST_DIR, '.easy-steam.json');
+    writeFileSync(configPath, '{ invalid json', 'utf-8');
+    expect(() => loadProjectConfig(TEST_DIR)).toThrow(/Invalid JSON/);
   });
 });

@@ -1,11 +1,95 @@
-import { resolve } from 'path';
-import { existsSync, readdirSync } from 'fs';
+import { resolve, dirname, relative, isAbsolute } from 'path';
+import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, getOutputDir, saveLastPush } from '../core/config.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
 import { ensureSteamCmd, runSteamCmd, parseBuildId, parseUploadProgress, isSuccessfulBuild, isLoginFailure, isRateLimited } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import * as logger from '../util/logger.js';
 import type { PushOptions, AppBuildVdfConfig, DepotConfig, LastPush } from '../types/index.js';
+
+function isPathWithin(parent: string, child: string): boolean {
+  const rel = relative(parent, child);
+  return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel));
+}
+
+function findCommonRoot(paths: string[]): string | null {
+  if (paths.length === 0) return null;
+
+  let common = resolve(paths[0]);
+  for (const path of paths.slice(1)) {
+    const candidate = resolve(path);
+    while (!isPathWithin(common, candidate)) {
+      const next = dirname(common);
+      if (next === common) {
+        return null;
+      }
+      common = next;
+    }
+  }
+
+  return common;
+}
+
+function normalizeLocalPath(p: string): string {
+  return p.split('\\').join('/').replace(/^\.\/+/, '');
+}
+
+function joinLocalPath(prefix: string, localPath: string): string {
+  const normalizedPrefix = normalizeLocalPath(prefix).replace(/\/+$/, '');
+  const normalizedLocal = normalizeLocalPath(localPath);
+
+  if (!normalizedPrefix || normalizedPrefix === '.') {
+    return normalizedLocal || '*';
+  }
+  if (!normalizedLocal || normalizedLocal === '.') {
+    return normalizedPrefix;
+  }
+  return `${normalizedPrefix}/${normalizedLocal}`;
+}
+
+function isAbsolutePath(value: string): boolean {
+  return isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value);
+}
+
+export interface PreparedDepots {
+  contentRoot: string;
+  depots: DepotConfig[];
+}
+
+export function prepareDepotsForVdf(depots: DepotConfig[]): PreparedDepots {
+  if (depots.length === 0) {
+    throw new Error('No depots configured for upload.');
+  }
+
+  const absoluteRoots = depots.map((d) => resolve(d.contentRoot));
+  const contentRoot = findCommonRoot(absoluteRoots);
+
+  if (!contentRoot) {
+    throw new Error('Depot content roots must share a common parent directory.');
+  }
+
+  const preparedDepots = depots.map((depot, i) => {
+    if (isAbsolutePath(depot.fileMapping.localPath)) {
+      throw new Error(`Depot ${depot.depotId} has an absolute fileMapping.localPath, which is unsupported.`);
+    }
+
+    const rootRelativeToCommon = relative(contentRoot, absoluteRoots[i]);
+    const localPath = joinLocalPath(rootRelativeToCommon, depot.fileMapping.localPath);
+
+    return {
+      ...depot,
+      fileMapping: {
+        ...depot.fileMapping,
+        localPath,
+      },
+    };
+  });
+
+  return {
+    contentRoot,
+    depots: preparedDepots,
+  };
+}
 
 export async function pushCommand(folder: string | undefined, options: PushOptions): Promise<void> {
   // 1. Resolve config
@@ -42,34 +126,43 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
       logger.error(`Content folder not found: ${absPath}`);
       process.exit(1);
     }
-    const files = readdirSync(absPath);
-    if (files.length === 0) {
-      logger.warn(`Content folder is empty: ${absPath}`);
+
+    try {
+      if (!statSync(absPath).isDirectory()) {
+        logger.error(`Content root is not a directory: ${absPath}`);
+        process.exit(1);
+      }
+
+      const files = readdirSync(absPath);
+      if (files.length === 0) {
+        logger.warn(`Content folder is empty: ${absPath}`);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      logger.error(`Unable to read content folder ${absPath}: ${message}`);
+      process.exit(1);
     }
   }
 
-  let description = options.desc;
-  if (!description) {
-    const inquirer = (await import('inquirer')).default;
-    const { desc } = await inquirer.prompt([
-      {
-        type: 'input',
-        name: 'desc',
-        message: 'Build description:',
-        default: `easy-steam build ${new Date().toISOString().slice(0, 19)}`,
-      },
-    ]);
-    description = desc as string;
+  const description = options.desc?.trim() || `build ${new Date().toISOString().slice(0, 19).replace('T', ' ')}`;
+  const outputDir = resolve(projectConfig?.buildOutput ?? getOutputDir());
+
+  let prepared: PreparedDepots;
+  try {
+    prepared = prepareDepotsForVdf(depots);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    logger.error(message);
+    process.exit(1);
   }
-  const outputDir = resolve(getOutputDir());
 
   const vdfConfig: AppBuildVdfConfig = {
     appId,
     description,
-    contentRoot: resolve(depots[0].contentRoot),
+    contentRoot: prepared.contentRoot,
     buildOutput: outputDir,
-    setLive: options.setLive ?? null,
-    depots,
+    setLive: options.setLive ?? projectConfig?.setLive ?? null,
+    depots: prepared.depots,
   };
 
   // 3. Dry run mode
@@ -78,7 +171,7 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
     console.log('--- app_build.vdf ---');
     console.log(generateAppBuildVdf(vdfConfig));
     console.log('');
-    for (const depot of depots) {
+    for (const depot of prepared.depots) {
       console.log(`--- depot_build_${depot.depotId}.vdf ---`);
       console.log(generateDepotBuildVdf(depot));
       console.log('');

@@ -6,6 +6,7 @@ import { loginCommand } from './commands/login.js';
 import { pushCommand } from './commands/push.js';
 import { statusCommand } from './commands/status.js';
 import { interactiveWizard } from './wizard/interactive.js';
+import * as logger from './util/logger.js';
 
 const program = new Command();
 
@@ -42,9 +43,12 @@ program
 // No subcommand → interactive wizard
 if (process.argv.length <= 2) {
   interactiveWizard().catch((err) => {
-    console.error(err);
+    logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);
   });
 } else {
-  program.parse();
+  program.parseAsync().catch((err) => {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  });
 }

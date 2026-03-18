@@ -23,8 +23,7 @@ export function projectConfigExists(cwd: string = process.cwd()): boolean {
 export function loadProjectConfig(cwd: string = process.cwd()): ProjectConfig | null {
   const path = getProjectConfigPath(cwd);
   if (!existsSync(path)) return null;
-  const raw = readFileSync(path, 'utf-8');
-  return JSON.parse(raw) as ProjectConfig;
+  return parseJsonFile<ProjectConfig>(path);
 }
 
 export function saveProjectConfig(config: ProjectConfig, cwd: string = process.cwd()): void {
@@ -38,13 +37,24 @@ function ensureGlobalDir(): void {
   }
 }
 
+function parseJsonFile<T>(path: string, defaultValue: T | null = null): T {
+  const raw = readFileSync(path, 'utf-8');
+  try {
+    return JSON.parse(raw) as T;
+  } catch {
+    if (defaultValue !== null) {
+      return defaultValue;
+    }
+    throw new Error(`Invalid JSON in ${path}. Fix the file or regenerate it.`);
+  }
+}
+
 export function loadGlobalConfig(): GlobalConfig {
   ensureGlobalDir();
   if (!existsSync(GLOBAL_CONFIG_FILE)) {
     return { steamcmdPath: null, username: null };
   }
-  const raw = readFileSync(GLOBAL_CONFIG_FILE, 'utf-8');
-  return JSON.parse(raw) as GlobalConfig;
+  return parseJsonFile<GlobalConfig>(GLOBAL_CONFIG_FILE, { steamcmdPath: null, username: null });
 }
 
 export function saveGlobalConfig(config: GlobalConfig): void {
@@ -70,5 +80,5 @@ export function saveLastPush(data: LastPush, cwd: string = process.cwd()): void 
 export function loadLastPush(cwd: string = process.cwd()): LastPush | null {
   const path = join(getOutputDir(cwd), 'last-push.json');
   if (!existsSync(path)) return null;
-  return JSON.parse(readFileSync(path, 'utf-8')) as LastPush;
+  return parseJsonFile<LastPush>(path);
 }

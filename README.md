@@ -50,6 +50,7 @@ easy-steam init
 ### `easy-steam push [folder]`
 
 Upload a build to Steam. Reads config from `.easy-steam.json`, generates VDF files, and runs SteamCMD.
+If `--desc` is omitted, a timestamp-based description is generated automatically.
 
 ```bash
 # Use config from .easy-steam.json
@@ -78,7 +79,7 @@ easy-steam push ./build --dry-run
 | `--app <id>` | Steam App ID (overrides config) |
 | `--depot <id>` | Steam Depot ID (overrides config) |
 | `--desc <text>` | Build description visible in Steamworks dashboard |
-| `--set-live <branch>` | Set build live on a branch after upload |
+| `--set-live <branch>` | Set build live on a branch after upload (overrides config `setLive`) |
 | `--dry-run` | Print generated VDF files without uploading |
 
 ### `easy-steam status`
@@ -120,6 +121,8 @@ Running `easy-steam init` creates `.easy-steam.json` in your project root:
 Commit this file to your repo. It contains no secrets.
 
 Global config (username, SteamCMD path) is stored in `~/.easy-steam/config.json` and is never committed.
+
+`buildOutput` is the directory used for generated VDF/log artifacts, and `setLive` is used by default when running `push` unless you override it with `--set-live`.
 
 ## SteamCMD
 
