@@ -2,3 +2,4 @@ node_modules/
 dist/
 .easy-steam-output/
 *.tsbuildinfo
+tmp/
