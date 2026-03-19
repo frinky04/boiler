@@ -6,6 +6,7 @@ import { loginCommand } from './commands/login.js';
 import { pushCommand } from './commands/push.js';
 import { statusCommand } from './commands/status.js';
 import { doctorCommand } from './commands/doctor.js';
+import { helpCommand } from './commands/help.js';
 import { interactiveWizard } from './wizard/interactive.js';
 import * as logger from './util/logger.js';
 
@@ -21,6 +22,7 @@ program
   .name('boiler')
   .description('Butler-like CLI for uploading builds to Steam via SteamCMD')
   .version('0.1.0')
+  .addHelpCommand(false)
   .option('-v, --verbose', 'Enable verbose logging')
   .option('--debug', 'Enable debug logging (implies verbose)');
 
@@ -72,6 +74,13 @@ program
   .option('--json', 'Print a machine-readable report')
   .option('--strict', 'Exit non-zero on warnings as well as errors')
   .action(doctorCommand);
+
+program
+  .command('help [command]')
+  .description('Show help for boiler or a specific command')
+  .action((commandName: string | undefined) => {
+    helpCommand(program, commandName);
+  });
 
 // No subcommand → interactive wizard
 const nonGlobalArgs = process.argv.slice(2).filter((arg) => arg !== '-v' && arg !== '--verbose' && arg !== '--debug');
