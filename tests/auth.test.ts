@@ -176,11 +176,11 @@ describe('login', () => {
 
     await vi.advanceTimersByTimeAsync(4000);
 
-    expect(loggerInfoMock).toHaveBeenCalledWith('Still waiting on Steam.');
-    expect(loggerDimMock).toHaveBeenCalledWith(
+    expect(loggerInfoMock).not.toHaveBeenCalledWith('Still waiting on Steam.');
+    expect(loggerDimMock).not.toHaveBeenCalledWith(
       '  If this account uses Steam Guard Mobile Authenticator, open Steam on your phone and approve the login request.'
     );
-    expect(spinnerState.text).toBe('Still waiting on Steam... check your phone if approval is required.');
+    expect(spinnerState.text).toBe('Still waiting on Steam... approve in Steam Mobile app if prompted.');
 
     await vi.advanceTimersByTimeAsync(1000);
 
@@ -215,14 +215,14 @@ describe('login', () => {
     });
 
     await vi.advanceTimersByTimeAsync(4000);
-    expect(spinnerState.text).toBe('Still waiting on Steam... check your phone if approval is required.');
+    expect(spinnerState.text).toBe('Still waiting on Steam... approve in Steam Mobile app if prompted.');
 
     await vi.advanceTimersByTimeAsync(1000);
     const result = await loginPromise;
 
     expect(result.success).toBe(false);
     expect(spinnerState.text).toBe('Approve the login in the Steam Mobile app on your phone...');
-    expect(loggerInfoMock).toHaveBeenCalledTimes(1);
+    expect(loggerInfoMock).not.toHaveBeenCalled();
   });
 
   it('does not ask for a Steam Guard code when phone approval is still pending', async () => {

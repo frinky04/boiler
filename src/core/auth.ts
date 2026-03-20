@@ -23,7 +23,7 @@ const STEAM_GUARD_MOBILE_CODE_RE = /Two-factor code|6-digit code/i;
 const STEAM_GUARD_ANY_RE = /Steam Guard|Two-factor|two factor|enter.*code|Waiting for confirmation|confirm the login/i;
 const MOBILE_APPROVAL_NUDGE_DELAY_MS = 4000;
 const MOBILE_APPROVAL_TEXT = 'Approve the login in the Steam Mobile app on your phone...';
-const MOBILE_APPROVAL_NUDGE_TEXT = 'Still waiting on Steam... check your phone if approval is required.';
+const MOBILE_APPROVAL_NUDGE_TEXT = 'Still waiting on Steam... approve in Steam Mobile app if prompted.';
 
 type MobileApprovalHintState = 'none' | 'nudge' | 'detected';
 
@@ -102,8 +102,6 @@ export async function login(steamcmdPath: string, options: LoginOptions = {}): P
 
     mobileApprovalHintState = 'nudge';
     spin.text = MOBILE_APPROVAL_NUDGE_TEXT;
-    logger.info('Still waiting on Steam.');
-    logger.dim('  If this account uses Steam Guard Mobile Authenticator, open Steam on your phone and approve the login request.');
   }
 
   function clearMobileApprovalNudge(): void {
