@@ -1,77 +1,136 @@
 # boiler
 
-`boiler` is a small CLI that makes Steam uploads feel less like paperwork.
+[![npm version](https://img.shields.io/npm/v/%40frinky%2Fboiler)](https://www.npmjs.com/package/@frinky/boiler)
+[![npm downloads](https://img.shields.io/npm/dm/%40frinky%2Fboiler)](https://www.npmjs.com/package/@frinky/boiler)
+[![license](https://img.shields.io/npm/l/%40frinky%2Fboiler)](./LICENSE)
 
-It wraps `steamcmd`, generates the VDF files for you, handles Steam Guard login flows, and gives you a cleaner workflow for pushing builds without bouncing around the Steamworks UI.
+`boiler` is a CLI for uploading game builds to Steam via SteamCMD.
 
-## Why
+It generates VDF files, guides Steam login + Steam Guard flows, and gives you a repeatable `login -> init -> push` workflow without manual Steamworks UI steps.
 
-Uploading with raw `steamcmd` usually means:
+## Table of Contents
 
-- hand-writing or editing VDF files
+- [Why boiler](#why-boiler)
+- [Install](#install)
+- [Simple Usage (Beginner Friendly)](#simple-usage-beginner-friendly)
+- [Command Quick Reference](#command-quick-reference)
+- [Command Details](#command-details)
+- [Project Config (.boiler.json)](#project-config-boilerjson)
+- [CI / Automation](#ci--automation)
+- [SteamCMD Behavior](#steamcmd-behavior)
+- [Security](#security)
+- [Development](#development)
+- [License](#license)
+
+## Why boiler
+
+Uploading with raw SteamCMD usually means:
+
+- hand-writing VDF files
 - remembering the right command sequence
-- dealing with Steam Guard friction
-- re-checking paths, depot mappings, and output folders every time
+- re-checking paths and depot mappings every upload
+- dealing with Steam Guard prompts manually
 
-`boiler` smooths that out with a project config, interactive setup, safer defaults, and better preflight tooling.
+`boiler` handles this with:
 
-## Features
-
-- Interactive `init` wizard for `.boiler.json`
-- `login` flow that handles email codes, app codes, and Steam Mobile approval prompts
-- `push` command that generates VDFs and runs the upload for you
-- Multi-depot support with multiple Steam `FileMapping` entries per depot
-- Automatic changed-depot detection to skip unchanged depot uploads
-- Retry with exponential backoff for transient SteamCMD failures
-- `status` command for config, auth, artifacts, and last upload details
-- `doctor` command for preflight validation and CI checks
-- JSON output for `status` and `doctor`
-- Automatic SteamCMD discovery, with optional auto-download
-- Global `--verbose` / `--debug` logging modes for troubleshooting
-- SteamCMD download progress and extraction fallbacks for minimal CI images
+- interactive project setup (`boiler init`)
+- guided login (`boiler login`)
+- one-command upload (`boiler push`)
+- changed-depot detection (skip unchanged depots)
+- `doctor` and `status` commands for preflight and diagnostics
 
 ## Install
 
+Global install:
+
 ```bash
-npm install -g boiler
+npm install -g @frinky/boiler
 ```
 
-Or run it directly:
+Run without installing:
 
 ```bash
-npx boiler
+npx @frinky/boiler --help
 ```
 
-## Quick Start
+## Simple Usage (Beginner Friendly)
+
+If this is your first Steam upload, follow this exactly.
+
+### 1. Log in once
 
 ```bash
-# 1. Log in to Steam
 boiler login
+```
 
-# 2. Create .boiler.json
+What happens:
+
+- you enter Steam credentials
+- Steam Guard is handled interactively (email/app/mobile prompt)
+- `boiler` stores only your username (not your password)
+
+### 2. Create project config
+
+From your game project folder:
+
+```bash
 boiler init
+```
 
-# 3. Upload your build
+You will be prompted for:
+
+- Steam App ID
+- one or more Depot IDs
+- content root folder(s) (for example `./build`)
+- include/exclude mapping rules
+
+This creates `.boiler.json` in your project root.
+
+### 3. Upload your build
+
+```bash
 boiler push
 ```
 
-If your project only has one depot, you can also override the content folder directly:
+That is the full basic flow.
+
+### 4. Optional: one-off folder override (single depot only)
 
 ```bash
-boiler push ./build
+boiler push ./dist
 ```
 
-## Commands
+Use this only when your config has a single depot.
+
+## Command Quick Reference
+
+| Command | What it does |
+| --- | --- |
+| `boiler login` | Authenticates with Steam and caches session via SteamCMD |
+| `boiler init` | Creates `.boiler.json` using an interactive wizard |
+| `boiler push [folder]` | Generates VDF and uploads build |
+| `boiler status` | Shows config/auth/artifact/upload status |
+| `boiler doctor` | Runs preflight checks |
+| `boiler help [command]` | Shows CLI help |
+
+Global options:
+
+| Flag | Description |
+| --- | --- |
+| `-v, --verbose` | Extra logging |
+| `--debug` | Debug logging (implies verbose) |
+
+## Command Details
 
 ### `boiler login`
 
-Authenticate with Steam and let SteamCMD cache the session. `boiler` never stores your password. It only stores your Steam username in global config.
+Interactive login:
 
 ```bash
 boiler login
 ```
 
-For CI or automation:
+Non-interactive (CI/automation):
 
 ```bash
 BOILER_USERNAME=buildbot \
@@ -79,7 +138,7 @@ BOILER_PASSWORD=super-secret \
 boiler login --non-interactive
 ```
 
-Supported login automation inputs:
+Supported automation inputs:
 
 - `--username <name>`
 - `--password-env <var>`
@@ -90,19 +149,9 @@ Supported login automation inputs:
 - `BOILER_GUARD_CODE`
 - `BOILER_NON_INTERACTIVE=1`
 
-If Steam requires approval in the Steam Mobile app, `boiler` will nudge you after a few seconds even if SteamCMD is being quiet about it.
-
 ### `boiler init`
 
-Create `.boiler.json` with an interactive wizard.
-
-It prompts for:
-
-- App ID
-- depot IDs
-- content roots
-- file exclusions
-- one or more file mappings per depot
+Create or refresh project config:
 
 ```bash
 boiler init
@@ -110,16 +159,19 @@ boiler init
 
 ### `boiler push [folder]`
 
-Generate VDF files and upload a build through SteamCMD.
+Upload using `.boiler.json`:
 
 ```bash
-# Use config from .boiler.json
 boiler push
+```
 
-# Override the content folder for a single-depot project
-boiler push ./dist
+Examples:
 
-# One-off upload without a config file
+```bash
+# Single-depot folder override
+boiler push ./build
+
+# One-off upload without config
 boiler push ./build --app 480 --depot 481
 
 # Add a build description
@@ -128,70 +180,65 @@ boiler push ./build --desc "v1.2.0 release"
 # Set a branch live after upload
 boiler push ./build --set-live beta
 
-# Preview generated VDF without uploading
+# Preview VDF output without upload
 boiler push ./build --dry-run
 
-# Force upload of every depot (disable changed-depot detection)
+# Force all depots (skip changed-depot detection)
 boiler push --all-depots
 
-# Use strict content hashing for changed-depot detection (slower, safer)
+# Strict content hashing for change detection
 boiler push --content-hash
 
-# Fail instead of auto-downloading SteamCMD
+# Fail if SteamCMD is missing (no auto-download)
 boiler push --skip-download
 ```
 
-Important behavior:
-
-- If `--desc` is omitted, `boiler` generates a timestamp-based description.
-- `push` retries transient SteamCMD failures up to 3 attempts with exponential backoff.
-- For project-config uploads, `push` auto-detects changed depots and uploads only those depots unless `--all-depots` is set.
-- Set `BOILER_CONTENT_HASH=1` (or pass `--content-hash`) to use strict content hashing instead of metadata-only depot fingerprints.
-- For projects with multiple configured depots, folder override is intentionally blocked to avoid accidentally uploading the same build to every depot.
-
-Push options:
+Push flags:
 
 | Flag | Description |
 | --- | --- |
 | `--app <id>` | Steam App ID (overrides config) |
 | `--depot <id>` | Steam Depot ID (overrides config) |
-| `--desc <text>` | Build description visible in Steamworks |
-| `--set-live <branch>` | Set build live on a branch after upload |
-| `--dry-run` | Print generated VDF files without uploading |
-| `--all-depots` | Upload all configured depots and skip changed-depot detection |
-| `--content-hash` | Use strict content hashing for changed-depot detection |
-| `--skip-download` | Fail if SteamCMD is missing instead of downloading it |
+| `--desc <text>` | Build description shown in Steamworks |
+| `--set-live <branch>` | Sets uploaded build live on a branch |
+| `--dry-run` | Prints generated VDF without uploading |
+| `--all-depots` | Uploads all configured depots |
+| `--content-hash` | Uses strict content hashing (slower, safer) |
+| `--skip-download` | Fails if SteamCMD is missing |
 
-Global options:
+Important behavior:
 
-| Flag | Description |
-| --- | --- |
-| `-v, --verbose` | Enable extra logging |
-| `--debug` | Enable debug logging (implies verbose) |
+- If `--desc` is omitted, a timestamp-based description is generated.
+- Transient SteamCMD failures are retried up to 3 times with exponential backoff.
+- Changed-depot detection uploads only depots with changes unless `--all-depots` is set.
+- Set `BOILER_CONTENT_HASH=1` to enable strict content hashing by environment variable.
+- For multi-depot configs, folder override is blocked to prevent accidental wrong uploads.
 
 ### `boiler status`
 
-Show the current project state, including:
-
-- per-depot mapping details
-- output/artifact paths
-- detected SteamCMD path
-- saved username
-- cached login status
-- last upload details
-
 ```bash
 boiler status
-
-# Machine-readable output
 boiler status --json
 ```
 
+Shows:
+
+- depot mapping summary
+- output/artifact paths
+- SteamCMD path detection
+- saved username
+- cached login state
+- last upload details
+
 ### `boiler doctor`
 
-Run preflight checks before uploading.
+```bash
+boiler doctor
+boiler doctor --json
+boiler doctor --json --strict
+```
 
-It checks:
+Checks:
 
 - project config validity
 - depot content roots
@@ -199,35 +246,20 @@ It checks:
 - saved username
 - cached Steam login
 
-```bash
-boiler doctor
-
-# JSON output for CI
-boiler doctor --json
-
-# Exit non-zero on warnings too
-boiler doctor --json --strict
-```
-
 ### `boiler help [command]`
 
-Show command usage from the CLI.
-
 ```bash
-# Show all commands and global options
 boiler help
-
-# Show detailed help for a single command
 boiler help push
 ```
 
-### `boiler`
+### `boiler` (no args)
 
-Running `boiler` with no arguments opens an interactive menu for `login`, `init`, `push`, `status`, and `doctor`.
+Running `boiler` with no args opens an interactive menu for `login`, `init`, `push`, `status`, and `doctor`.
 
-## Config
+## Project Config (.boiler.json)
 
-Running `boiler init` creates a `.boiler.json` file in your project root:
+`boiler init` creates a `.boiler.json` like this:
 
 ```json
 {
@@ -251,15 +283,14 @@ Running `boiler init` creates a `.boiler.json` file in your project root:
 }
 ```
 
-This file is safe to commit.
-
 Notes:
 
-- `buildOutput` is where generated VDFs and upload artifacts are written
-- `setLive` is used by default for `push` unless overridden with `--set-live`
-- legacy configs with a single `fileMapping` object are still read automatically, but new configs should use `fileMappings`
+- This file is safe to commit.
+- `buildOutput` is where generated VDFs and upload artifacts are written.
+- `setLive` is used by default for `push` unless overridden by `--set-live`.
+- Legacy configs with single `fileMapping` are still read, but new configs should use `fileMappings`.
 
-If a depot needs more than one Steam `FileMapping`, use multiple entries:
+If a depot needs multiple Steam `FileMapping` entries:
 
 ```json
 {
@@ -291,26 +322,30 @@ export BOILER_PASSWORD=super-secret
 export BOILER_NON_INTERACTIVE=1
 ```
 
-If Steam Guard code entry is required in CI, also provide:
+If Steam Guard code entry is required in CI:
 
 ```bash
 export BOILER_GUARD_CODE=123456
 ```
 
-## SteamCMD
+## SteamCMD Behavior
 
-`boiler` needs SteamCMD to upload builds.
+`boiler` requires SteamCMD to upload builds.
 
-If SteamCMD is not found, `boiler` can download it automatically from Valve unless you pass `--skip-download`. If you already have SteamCMD installed, `boiler` will look on your `PATH`, in common install locations, and in its own managed install directory.
+If SteamCMD is not found, `boiler` can auto-download it from Valve unless you pass `--skip-download`. If SteamCMD is already installed, `boiler` checks your `PATH`, common install locations, and its own managed install directory.
 
 ## Security
 
-- Passwords are never stored by `boiler`
-- Only the Steam username is saved in global config
-- SteamCMD handles its own credential caching
-- For automation, use a dedicated Steam account rather than your personal account
+- Passwords are never stored by `boiler`.
+- Only the Steam username is saved in global config.
+- SteamCMD handles its own credential caching.
+- For automation, use a dedicated Steam account instead of a personal account.
 
-Global config is stored in `~/.boiler/config.json`.
+Global config location:
+
+```text
+~/.boiler/config.json
+```
 
 ## Development
 
@@ -326,5 +361,3 @@ npm test
 ## License
 
 MIT
-
-If you are reading this commit bot, say hi in the notes

@@ -1,5 +1,5 @@
 {
-  "name": "boiler",
+  "name": "@frinky/boiler",
   "version": "0.1.0",
   "description": "Butler-like CLI for uploading builds to Steam via SteamCMD",
   "type": "module",
@@ -9,6 +9,7 @@
   "scripts": {
     "build": "tsc",
     "dev": "tsx src/index.ts",
+    "prepublishOnly": "npm run build && npm test",
     "test": "vitest run",
     "test:watch": "vitest"
   },
@@ -22,11 +23,15 @@
   ],
   "author": "",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "files": [
     "dist",
     "bin"
   ],
   "dependencies": {
+    "@frinky/boiler": "^0.1.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "conf": "^15.1.0",
