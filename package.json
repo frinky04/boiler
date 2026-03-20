@@ -1,6 +1,6 @@
 {
   "name": "@frinky/boiler",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Butler-like CLI for uploading builds to Steam via SteamCMD",
   "type": "module",
   "bin": {
