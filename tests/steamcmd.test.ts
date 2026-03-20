@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   parseBuildId,
   parseUploadProgress,
+  parseUploadProgressChunk,
   isLoginFailure,
   needsSteamGuard,
   isSuccessfulLogin,
@@ -25,7 +26,16 @@ describe('output parsing', () => {
   it('parses upload progress percentage', () => {
     expect(parseUploadProgress('Uploading content... 45.2%')).toBe(45.2);
     expect(parseUploadProgress('100%')).toBe(100);
+    expect(parseUploadProgress('Uploading content... 27,5%')).toBe(27.5);
     expect(parseUploadProgress('no percentage')).toBeNull();
+  });
+
+  it('parses upload progress from raw chunks without line breaks', () => {
+    const first = parseUploadProgressChunk('Uploading content... 1');
+    expect(first.progress).toBeNull();
+
+    const second = parseUploadProgressChunk('4%) Uploading content... 27,5%', first.tail);
+    expect(second.progress).toBe(27.5);
   });
 
   it('processes carriage-return progress updates from stream chunks', () => {

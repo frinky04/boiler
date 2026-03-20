@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
 import { computeDepotStateRecord, detectChangedDepots, persistDepotStateSnapshots, type DepotFingerprintMode, type DepotStateRecord } from '../core/depot-state.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
-import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
+import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, parseUploadProgressChunk, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import { validateProjectConfig } from '../util/validation.js';
 import * as logger from '../util/logger.js';
@@ -415,17 +415,31 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   // 7. Execute upload
   const spin = logger.spinner(`Uploading App ${plan.appId}...`);
   spin.start();
+  let progressTail = '';
+  let lastProgress: number | null = null;
+
+  const setUploadProgress = (progress: number): void => {
+    lastProgress = progress;
+    spin.text = `Uploading App ${plan.appId}... ${progress.toFixed(1)}%`;
+  };
 
   const result = await runSteamCmdWithRetry(
     steamcmdPath,
     ['+login', username, '+run_app_build', appVdfPath, '+quit'],
     {
       timeoutMs: 600_000, // 10 min for large uploads
+      onRawOutput: (chunk) => {
+        const parsed = parseUploadProgressChunk(chunk, progressTail);
+        progressTail = parsed.tail;
+        if (parsed.progress !== null) {
+          setUploadProgress(parsed.progress);
+        }
+      },
       onOutput: (line) => {
         // Progress percentage
         const progress = parseUploadProgress(line);
         if (progress !== null) {
-          spin.text = `Uploading App ${plan.appId}... ${progress.toFixed(1)}%`;
+          setUploadProgress(progress);
           return;
         }
 
@@ -436,7 +450,9 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
         } else if (/Scanning content/i.test(line)) {
           spin.text = 'Scanning content files...';
         } else if (/Uploading content/i.test(line)) {
-          spin.text = `Uploading App ${plan.appId}...`;
+          spin.text = lastProgress === null
+            ? `Uploading App ${plan.appId}...`
+            : `Uploading App ${plan.appId}... ${lastProgress.toFixed(1)}%`;
         } else if (/Processing|Committing/i.test(line)) {
           spin.text = 'Processing build on Steam servers...';
         } else if (/new files|changed files|unchanged/i.test(line)) {

@@ -12,6 +12,9 @@ export interface SteamCmdResult {
   stderr: string;
 }
 
+const UPLOAD_PROGRESS_PATTERN = /(\d+(?:[\.,]\d+)?)\s*%/;
+const UPLOAD_PROGRESS_TAIL_LENGTH = 32;
+
 export async function findSteamCmd(): Promise<string | null> {
   // 1. Check global config
   const global = loadGlobalConfig();
@@ -627,10 +630,49 @@ export function parseBuildId(output: string): string | null {
   return match ? match[1] : null;
 }
 
+function toProgressNumber(value: string): number | null {
+  const parsed = Number.parseFloat(value.replace(',', '.'));
+  if (!Number.isFinite(parsed)) {
+    return null;
+  }
+
+  if (parsed < 0 || parsed > 100) {
+    return null;
+  }
+
+  return parsed;
+}
+
 export function parseUploadProgress(line: string): number | null {
   // Look for percentage patterns in SteamCMD output
-  const match = line.match(/(\d+(?:\.\d+)?)\s*%/);
-  return match ? parseFloat(match[1]) : null;
+  const match = line.match(UPLOAD_PROGRESS_PATTERN);
+  if (!match) {
+    return null;
+  }
+
+  return toProgressNumber(match[1]);
+}
+
+export function parseUploadProgressChunk(
+  chunk: string,
+  previousTail: string = ''
+): { progress: number | null; tail: string } {
+  const text = `${previousTail}${chunk}`;
+  let progress: number | null = null;
+  const matcher = new RegExp(UPLOAD_PROGRESS_PATTERN.source, 'g');
+
+  let match: RegExpExecArray | null;
+  while ((match = matcher.exec(text)) !== null) {
+    const parsed = toProgressNumber(match[1]);
+    if (parsed !== null) {
+      progress = parsed;
+    }
+  }
+
+  return {
+    progress,
+    tail: text.slice(-UPLOAD_PROGRESS_TAIL_LENGTH),
+  };
 }
 
 export function isLoginFailure(output: string): boolean {
