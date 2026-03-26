@@ -8,6 +8,7 @@ import { statusCommand } from './commands/status.js';
 import { doctorCommand } from './commands/doctor.js';
 import { helpCommand } from './commands/help.js';
 import { interactiveWizard } from './wizard/interactive.js';
+import { CLI_VERSION } from './core/version.js';
 import * as logger from './util/logger.js';
 
 const program = new Command();
@@ -21,7 +22,7 @@ if (process.argv.includes('--debug')) {
 program
   .name('boiler')
   .description('Butler-like CLI for uploading builds to Steam via SteamCMD')
-  .version('0.1.0')
+  .version(CLI_VERSION)
   .addHelpCommand(false)
   .option('-v, --verbose', 'Enable verbose logging')
   .option('--debug', 'Enable debug logging (implies verbose)');
@@ -41,6 +42,7 @@ program
   .option('--username <name>', 'Steam username')
   .option('--password-env <var>', 'Read the Steam password from an environment variable')
   .option('--guard-code-env <var>', 'Read the Steam Guard code from an environment variable')
+  .option('--install-steamcmd', 'Download SteamCMD from Valve if it is not already installed')
   .option('--non-interactive', 'Fail instead of prompting for missing credentials or codes')
   .action(loginCommand);
 
@@ -59,7 +61,7 @@ program
   .option('--dry-run', 'Preview generated VDF without uploading')
   .option('--all-depots', 'Upload all depots and skip automatic changed-depot detection')
   .option('--content-hash', 'Use strict content hashing for changed-depot detection (slower)')
-  .option('--skip-download', 'Fail if SteamCMD is missing instead of downloading it')
+  .option('--install-steamcmd', 'Download SteamCMD from Valve if it is not already installed')
   .action(pushCommand);
 
 program

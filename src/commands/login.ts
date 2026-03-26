@@ -1,4 +1,4 @@
-import { ensureSteamCmd } from '../core/steamcmd.js';
+import { downloadSteamCmd, findSteamCmd } from '../core/steamcmd.js';
 import { login, type LoginOptions } from '../core/auth.js';
 import * as logger from '../util/logger.js';
 
@@ -6,7 +6,13 @@ export interface LoginCommandOptions {
   username?: string;
   passwordEnv?: string;
   guardCodeEnv?: string;
+  installSteamcmd?: boolean;
   nonInteractive?: boolean;
+}
+
+export interface LoginSteamCmdDependencies {
+  findSteamCmd: typeof findSteamCmd;
+  downloadSteamCmd: typeof downloadSteamCmd;
 }
 
 function readEnvSecret(envVar: string | undefined, env: NodeJS.ProcessEnv, label: string): string | undefined {
@@ -38,8 +44,33 @@ export function resolveLoginOptions(
   };
 }
 
+export async function resolveSteamCmdPathForLogin(
+  options: LoginCommandOptions,
+  deps: LoginSteamCmdDependencies = { findSteamCmd, downloadSteamCmd }
+): Promise<string> {
+  const steamcmdPath = await deps.findSteamCmd();
+  if (steamcmdPath) {
+    return steamcmdPath;
+  }
+
+  if (options.installSteamcmd) {
+    return deps.downloadSteamCmd();
+  }
+
+  throw new Error(
+    'SteamCMD was not found. Install it manually or rerun with `--install-steamcmd` to let boiler download it from Valve.'
+  );
+}
+
 export async function loginCommand(options: LoginCommandOptions = {}): Promise<void> {
-  const steamcmdPath = await ensureSteamCmd();
+  let steamcmdPath: string;
+  try {
+    steamcmdPath = await resolveSteamCmdPathForLogin(options);
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
   logger.dim(`  Using SteamCMD: ${steamcmdPath}`);
 
   let loginOptions: LoginOptions;

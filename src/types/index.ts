@@ -41,7 +41,7 @@ export interface PushOptions {
   dryRun?: boolean;
   allDepots?: boolean;
   contentHash?: boolean;
-  skipDownload?: boolean;
+  installSteamcmd?: boolean;
 }
 
 export interface LastPush {

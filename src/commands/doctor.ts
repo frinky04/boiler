@@ -113,7 +113,7 @@ export async function runDoctorChecks(
     addCheck(checks, {
       name: 'steamcmd',
       level: 'error',
-      message: 'SteamCMD was not found. Install it or run `boiler login` once to let boiler download it.',
+      message: 'SteamCMD was not found. Install it manually or rerun `boiler login --install-steamcmd` to let boiler download it.',
       details: { path: null },
     });
   }

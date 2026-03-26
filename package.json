@@ -31,7 +31,6 @@
     "bin"
   ],
   "dependencies": {
-    "@frinky/boiler": "^0.1.0",
     "chalk": "^5.6.2",
     "commander": "^14.0.3",
     "conf": "^15.1.0",

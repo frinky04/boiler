@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { mkdirSync, rmSync, existsSync } from 'fs';
 import { join } from 'path';
-import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush, runPrePushValidation, resolveDepotSelectionForPush } from '../src/commands/push.js';
+import { buildPushPlan, prepareDepotsForVdf, resolvePushDepots, resolveSteamCmdPathForPush, runPrePushValidation, resolveDepotSelectionForPush, ensureCachedLoginReadyForPush } from '../src/commands/push.js';
 import type { DepotConfig, ProjectConfig, PushOptions } from '../src/types/index.js';
 
 const TEST_DIR = join(process.cwd(), '.test-push-tmp');
@@ -154,24 +154,34 @@ describe('buildPushPlan', () => {
 });
 
 describe('resolveSteamCmdPathForPush', () => {
-  it('fails fast in no-download mode when SteamCMD is missing', async () => {
+  it('fails when SteamCMD is missing and install is not allowed', async () => {
     await expect(resolveSteamCmdPathForPush(
-      { skipDownload: true },
+      {},
       {
         findSteamCmd: async () => null,
-        ensureSteamCmd: async () => '/tmp/steamcmd',
+        downloadSteamCmd: async () => '/tmp/steamcmd',
       }
-    )).rejects.toThrow(/--skip-download/i);
+    )).rejects.toThrow(/--install-steamcmd/i);
   });
 
-  it('uses an existing SteamCMD install in no-download mode', async () => {
+  it('uses an existing SteamCMD install when present', async () => {
     await expect(resolveSteamCmdPathForPush(
-      { skipDownload: true },
+      {},
       {
         findSteamCmd: async () => '/usr/bin/steamcmd',
-        ensureSteamCmd: async () => '/tmp/steamcmd',
+        downloadSteamCmd: async () => '/tmp/steamcmd',
       }
     )).resolves.toBe('/usr/bin/steamcmd');
+  });
+
+  it('downloads SteamCMD when explicitly requested', async () => {
+    await expect(resolveSteamCmdPathForPush(
+      { installSteamcmd: true },
+      {
+        findSteamCmd: async () => null,
+        downloadSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).resolves.toBe('/tmp/steamcmd');
   });
 });
 
@@ -306,5 +316,35 @@ describe('resolveDepotSelectionForPush', () => {
 
     expect(seenMode).toBe('content');
     expect(result.fingerprintMode).toBe('content');
+  });
+});
+
+describe('ensureCachedLoginReadyForPush', () => {
+  it('passes when cached login is valid', async () => {
+    await expect(ensureCachedLoginReadyForPush(
+      '/usr/bin/steamcmd',
+      'buildbot',
+      {
+        probeCachedLogin: async () => ({
+          status: 'valid',
+          message: 'Cached Steam login is valid.',
+          output: '',
+        }),
+      }
+    )).resolves.toBeUndefined();
+  });
+
+  it('fails when cached login is missing', async () => {
+    await expect(ensureCachedLoginReadyForPush(
+      '/usr/bin/steamcmd',
+      'buildbot',
+      {
+        probeCachedLogin: async () => ({
+          status: 'missing',
+          message: 'Cached Steam login is missing or expired. Run `boiler login` again.',
+          output: '',
+        }),
+      }
+    )).rejects.toThrow(/Run `boiler login` again/i);
   });
 });

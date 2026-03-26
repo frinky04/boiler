@@ -78,7 +78,7 @@ export async function getStatusReport(
   if (!global.username) {
     authMessage = 'No saved Steam username. Run `boiler login` first.';
   } else if (!steamcmdPath) {
-    authMessage = 'SteamCMD not found, so cached login could not be checked.';
+    authMessage = 'SteamCMD not found. Install it manually or rerun `boiler login --install-steamcmd` to let boiler download it.';
   } else {
     const probe = await deps.probeCachedLogin(steamcmdPath, global.username);
     authStatus = probe.status;

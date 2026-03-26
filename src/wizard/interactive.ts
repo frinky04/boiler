@@ -36,7 +36,7 @@ export async function interactiveWizard(): Promise<void> {
     try {
       switch (action as Action) {
         case 'login':
-          await loginCommand();
+          await interactiveLogin();
           break;
         case 'init':
           await initCommand();
@@ -61,8 +61,21 @@ export async function interactiveWizard(): Promise<void> {
   }
 }
 
+async function interactiveLogin(): Promise<void> {
+  const { installSteamcmd } = await inquirer.prompt([
+    {
+      type: 'confirm',
+      name: 'installSteamcmd',
+      message: 'Download SteamCMD from Valve if it is not installed?',
+      default: false,
+    },
+  ]);
+
+  await loginCommand({ installSteamcmd });
+}
+
 async function interactivePush(): Promise<void> {
-  const { folder, desc, dryRun } = await inquirer.prompt([
+  const { folder, desc, dryRun, installSteamcmd } = await inquirer.prompt([
     {
       type: 'input',
       name: 'folder',
@@ -79,10 +92,16 @@ async function interactivePush(): Promise<void> {
       message: 'Dry run (preview VDF without uploading)?',
       default: false,
     },
+    {
+      type: 'confirm',
+      name: 'installSteamcmd',
+      message: 'Download SteamCMD from Valve if it is not installed?',
+      default: false,
+    },
   ]);
 
   await pushCommand(
     folder || undefined,
-    { desc: desc || undefined, dryRun }
+    { desc: desc || undefined, dryRun, installSteamcmd }
   );
 }

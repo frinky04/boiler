@@ -3,7 +3,7 @@ import { existsSync, readdirSync, statSync } from 'fs';
 import { loadProjectConfig, resolveBuildOutputDir, saveLastPush } from '../core/config.js';
 import { computeDepotStateRecord, detectChangedDepots, persistDepotStateSnapshots, type DepotFingerprintMode, type DepotStateRecord } from '../core/depot-state.js';
 import { generateAppBuildVdf, generateDepotBuildVdf, writeVdfFiles } from '../core/vdf-generator.js';
-import { ensureSteamCmd, findSteamCmd, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, parseUploadProgressChunk, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
+import { downloadSteamCmd, findSteamCmd, probeCachedLogin, runSteamCmdWithRetry, parseBuildId, parseUploadProgress, parseUploadProgressChunk, isSuccessfulBuild, classifySteamCmdFailure } from '../core/steamcmd.js';
 import { getUsername } from '../core/auth.js';
 import { validateProjectConfig } from '../util/validation.js';
 import * as logger from '../util/logger.js';
@@ -67,8 +67,12 @@ export interface PushPlan {
 }
 
 export interface PushSteamCmdDependencies {
-  ensureSteamCmd: typeof ensureSteamCmd;
+  downloadSteamCmd: typeof downloadSteamCmd;
   findSteamCmd: typeof findSteamCmd;
+}
+
+export interface PushAuthDependencies {
+  probeCachedLogin: typeof probeCachedLogin;
 }
 
 export interface PrePushValidationResult {
@@ -274,17 +278,20 @@ export function buildPushPlan(
 
 export async function resolveSteamCmdPathForPush(
   options: PushOptions,
-  deps: PushSteamCmdDependencies = { ensureSteamCmd, findSteamCmd }
+  deps: PushSteamCmdDependencies = { downloadSteamCmd, findSteamCmd }
 ): Promise<string> {
-  if (options.skipDownload) {
-    const steamcmdPath = await deps.findSteamCmd();
-    if (!steamcmdPath) {
-      throw new Error('SteamCMD was not found and `--skip-download` is set. Install SteamCMD or remove `--skip-download`.');
-    }
+  const steamcmdPath = await deps.findSteamCmd();
+  if (steamcmdPath) {
     return steamcmdPath;
   }
 
-  return deps.ensureSteamCmd();
+  if (options.installSteamcmd) {
+    return deps.downloadSteamCmd();
+  }
+
+  throw new Error(
+    'SteamCMD was not found. Install it manually or rerun with `--install-steamcmd` to let boiler download it from Valve.'
+  );
 }
 
 export function runPrePushValidation(projectConfig: ProjectConfig | null, depots: DepotConfig[]): PrePushValidationResult {
@@ -321,6 +328,24 @@ export function runPrePushValidation(projectConfig: ProjectConfig | null, depots
   }
 
   return { errors, warnings };
+}
+
+export async function ensureCachedLoginReadyForPush(
+  steamcmdPath: string,
+  username: string,
+  deps: PushAuthDependencies = { probeCachedLogin }
+): Promise<void> {
+  const probe = await deps.probeCachedLogin(steamcmdPath, username);
+
+  if (probe.status === 'valid') {
+    return;
+  }
+
+  if (probe.status === 'missing') {
+    throw new Error('Cached Steam login is missing or expired. Run `boiler login` again before pushing.');
+  }
+
+  logger.warn(`${probe.message} Continuing with upload.`);
 }
 
 export async function pushCommand(folder: string | undefined, options: PushOptions): Promise<void> {
@@ -403,6 +428,13 @@ export async function pushCommand(folder: string | undefined, options: PushOptio
   let steamcmdPath: string;
   try {
     steamcmdPath = await resolveSteamCmdPathForPush(options);
+  } catch (err) {
+    logger.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+
+  try {
+    await ensureCachedLoginReadyForPush(steamcmdPath, username);
   } catch (err) {
     logger.error(err instanceof Error ? err.message : String(err));
     process.exit(1);

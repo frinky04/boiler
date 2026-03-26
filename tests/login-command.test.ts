@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveLoginOptions } from '../src/commands/login.js';
+import { resolveLoginOptions, resolveSteamCmdPathForLogin } from '../src/commands/login.js';
 
 describe('resolveLoginOptions', () => {
   it('uses explicit env-variable names for secrets', () => {
@@ -45,5 +45,37 @@ describe('resolveLoginOptions', () => {
 
   it('throws when an explicit password env var is missing', () => {
     expect(() => resolveLoginOptions({ passwordEnv: 'MISSING_PASSWORD' }, {})).toThrow(/MISSING_PASSWORD/);
+  });
+});
+
+describe('resolveSteamCmdPathForLogin', () => {
+  it('uses an existing SteamCMD install when found', async () => {
+    await expect(resolveSteamCmdPathForLogin(
+      {},
+      {
+        findSteamCmd: async () => '/usr/bin/steamcmd',
+        downloadSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).resolves.toBe('/usr/bin/steamcmd');
+  });
+
+  it('downloads SteamCMD only when explicitly requested', async () => {
+    await expect(resolveSteamCmdPathForLogin(
+      { installSteamcmd: true },
+      {
+        findSteamCmd: async () => null,
+        downloadSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).resolves.toBe('/tmp/steamcmd');
+  });
+
+  it('fails when SteamCMD is missing and install is not allowed', async () => {
+    await expect(resolveSteamCmdPathForLogin(
+      {},
+      {
+        findSteamCmd: async () => null,
+        downloadSteamCmd: async () => '/tmp/steamcmd',
+      }
+    )).rejects.toThrow(/--install-steamcmd/i);
   });
 });

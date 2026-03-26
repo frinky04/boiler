@@ -143,6 +143,7 @@ Supported automation inputs:
 - `--username <name>`
 - `--password-env <var>`
 - `--guard-code-env <var>`
+- `--install-steamcmd`
 - `--non-interactive`
 - `BOILER_USERNAME`
 - `BOILER_PASSWORD`
@@ -189,8 +190,8 @@ boiler push --all-depots
 # Strict content hashing for change detection
 boiler push --content-hash
 
-# Fail if SteamCMD is missing (no auto-download)
-boiler push --skip-download
+# Download SteamCMD from Valve if needed
+boiler push --install-steamcmd
 ```
 
 Push flags:
@@ -204,7 +205,7 @@ Push flags:
 | `--dry-run` | Prints generated VDF without uploading |
 | `--all-depots` | Uploads all configured depots |
 | `--content-hash` | Uses strict content hashing (slower, safer) |
-| `--skip-download` | Fails if SteamCMD is missing |
+| `--install-steamcmd` | Downloads SteamCMD from Valve if it is missing |
 
 Important behavior:
 
@@ -213,6 +214,7 @@ Important behavior:
 - Changed-depot detection uploads only depots with changes unless `--all-depots` is set.
 - Set `BOILER_CONTENT_HASH=1` to enable strict content hashing by environment variable.
 - For multi-depot configs, folder override is blocked to prevent accidental wrong uploads.
+- `boiler` will not auto-download SteamCMD unless you explicitly pass `--install-steamcmd`.
 
 ### `boiler status`
 
@@ -310,8 +312,8 @@ Typical CI flow:
 
 ```bash
 boiler doctor --json --strict
-boiler login --non-interactive
-boiler push --skip-download
+boiler login --non-interactive --install-steamcmd
+boiler push
 ```
 
 Recommended environment variables:
@@ -332,7 +334,7 @@ export BOILER_GUARD_CODE=123456
 
 `boiler` requires SteamCMD to upload builds.
 
-If SteamCMD is not found, `boiler` can auto-download it from Valve unless you pass `--skip-download`. If SteamCMD is already installed, `boiler` checks your `PATH`, common install locations, and its own managed install directory.
+If SteamCMD is not found, `boiler` stops by default and asks you to install it manually or rerun with `--install-steamcmd`. If SteamCMD is already installed, `boiler` checks your `PATH`, common install locations, and its own managed install directory.
 
 ## Security
 
